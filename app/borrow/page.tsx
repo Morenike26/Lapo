@@ -145,7 +145,9 @@ export default function BorrowPage() {
   const fee        = amount ? Number(amount) * 0.005 : 0;
   const disbursed  = amount ? Number(amount) - fee : 0;
 
-  const needsBootstrapApproval = score === 0n && allowance < parseUnits("10", 18);
+  const BOOTSTRAP_AMOUNT = parseUnits("10", 18);
+  const insufficientForBootstrap = usdcBal < BOOTSTRAP_AMOUNT;
+  const needsBootstrapApproval = score === 0n && allowance < BOOTSTRAP_AMOUNT;
 
   const bootstrap   = useBootstrap();
   const approve     = useApprove();
@@ -176,6 +178,11 @@ export default function BorrowPage() {
   const handleRepay   = (id: bigint) => { setRepayingId(id); repayLoan.repay(id); };
   const handleDefault = (id: bigint) => markDefault.markDefault(id);
   const canBorrow = score >= 100n;
+
+  const parsedLoanAmount = amount ? parseUnits(amount, 18) : 0n;
+  const loanExceedsLimit = parsedLoanAmount > maxBorrow;
+  // Pool must have liquidity to issue a loan; the pool contract enforces this,
+  // but we also check balance isn't needed since borrowers receive USDC not spend it.
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
@@ -252,9 +259,14 @@ export default function BorrowPage() {
               </div>
               <p className="text-sm text-lapo-muted mb-5 leading-relaxed">
                 Commit 10 USDC as proof of intent. The funds come straight back and your wallet
-                receives <span className="text-white">100 score points</span> — enough to take
+                receives <span className="text-white">100 score points</span>, enough to take
                 your first loan.
               </p>
+              {insufficientForBootstrap && (
+                <p className="text-xs text-red-400 mb-4">
+                  You need at least 10 USDC to bootstrap. Your balance: ${formatUSDC(usdcBal)}.
+                </p>
+              )}
               {txMsg && (
                 <div className="flex items-center gap-2 text-green-400 text-sm mb-4">
                   <CheckCircle size={14} /> {txMsg}
@@ -262,9 +274,10 @@ export default function BorrowPage() {
               )}
               {needsBootstrapApproval ? (
                 <TxButton
-                  onClick={() => approve.approve(parseUnits("10", 18))}
+                  onClick={() => approve.approve(BOOTSTRAP_AMOUNT)}
                   loading={approve.isPending || approve.isConfirming}
                   loadingText="Approving…"
+                  disabled={insufficientForBootstrap}
                 >
                   Approve 10 USDC
                 </TxButton>
@@ -273,6 +286,7 @@ export default function BorrowPage() {
                   onClick={() => bootstrap.bootstrap()}
                   loading={bootstrap.isPending || bootstrap.isConfirming}
                   loadingText="Bootstrapping…"
+                  disabled={insufficientForBootstrap}
                 >
                   Bootstrap Reputation (+100 score)
                 </TxButton>
@@ -372,7 +386,7 @@ export default function BorrowPage() {
                 disabled={
                   !amount ||
                   Number(amount) <= 0 ||
-                  Number(amount) > Number(formatUSDC(maxBorrow, 2).replace(/,/g, ""))
+                  loanExceedsLimit
                 }
                 loading={requestLoan.isPending || requestLoan.isConfirming}
                 loadingText="Requesting Loan…"

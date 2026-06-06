@@ -69,14 +69,21 @@ export default function LendPage() {
     }
   }, [deposit.isSuccess, withdraw.isSuccess, approve.isSuccess]);
 
+  const parsedAmount = amount ? parseUnits(amount, 18) : 0n;
+
+  // Balance checks
+  const insufficientBalance = tab === "deposit"
+    ? parsedAmount > usdcBal
+    : parsedAmount > myUSDCValue;
+
   const handleAction = () => {
     if (!amount) return;
     if (tab === "deposit") {
-      if (needsApproval) { approve.approve(); return; }
+      if (needsApproval) { approve.approve(parsedAmount); return; }
       deposit.deposit(amount);
     } else {
       if (myUSDCValue === 0n || myShares === 0n) return;
-      const sharesToBurn = (parseUnits(amount, 18) * myShares) / myUSDCValue;
+      const sharesToBurn = (parsedAmount * myShares) / myUSDCValue;
       withdraw.withdraw(sharesToBurn);
     }
   };
@@ -241,9 +248,15 @@ export default function LendPage() {
                 </p>
               )}
 
+              {insufficientBalance && amount && Number(amount) > 0 && (
+                <p className="text-xs text-red-400">
+                  Insufficient balance. You have ${formatUSDC(tab === "deposit" ? usdcBal : myUSDCValue)} available.
+                </p>
+              )}
+
               <TxButton
                 onClick={handleAction}
-                disabled={!amount || Number(amount) <= 0}
+                disabled={!amount || Number(amount) <= 0 || insufficientBalance}
                 loading={isLoading}
                 loadingText={loadingText}
               >

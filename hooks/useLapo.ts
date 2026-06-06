@@ -78,12 +78,12 @@ export function useApprove() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
-  const approve = (amount?: bigint) =>
+  const approve = (amount: bigint) =>
     writeContract({
       address: USDC_ADDRESS,
       abi: ERC20_ABI,
       functionName: "approve",
-      args: [LAPO_ADDRESS, amount ?? maxUint256],
+      args: [LAPO_ADDRESS, amount],
     });
 
   return { approve, isPending, isConfirming, isSuccess, error };
