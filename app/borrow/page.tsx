@@ -17,8 +17,6 @@ import { TxButton } from "@/components/TxButton";
 import { StatCard } from "@/components/StatCard";
 import { formatUSDC, formatBps, durationLabel, timeLeft, cn } from "@/lib/utils";
 import { parseUnits } from "viem";
-import { LAPO_ABI, LAPO_ADDRESS } from "@/lib/contracts";
-import { useReadContract } from "wagmi";
 
 const DURATIONS = [
   { label: "30 days", value: 30 * 86400 },
