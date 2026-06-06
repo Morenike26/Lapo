@@ -15,10 +15,10 @@ import { LAPO_ADDRESS, USDC_ADDRESS, LAPO_ABI, ERC20_ABI } from "@/lib/contracts
 const GAS = {
   approve:             50_000n,
   deposit:            200_000n,
-  withdraw:           180_000n,
-  bootstrap:          150_000n,
-  requestLoan:        220_000n,
-  repayLoan:          200_000n,
+  withdraw:           200_000n,
+  bootstrap:          320_000n,
+  requestLoan:        400_000n,
+  repayLoan:          320_000n,
   markDefault:         80_000n,
 } as const;
 
