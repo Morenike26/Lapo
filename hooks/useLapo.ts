@@ -6,9 +6,19 @@ import {
   useWriteContract,
   useWaitForTransactionReceipt,
   useAccount,
+  useBalance,
 } from "wagmi";
 import { parseUnits, maxUint256 } from "viem";
 import { LAPO_ADDRESS, USDC_ADDRESS, LAPO_ABI, ERC20_ABI } from "@/lib/contracts";
+
+// ── Native USDC balance (Arc's native token) ─────────────────────────────────
+
+export function useUSDCBalance(address?: `0x${string}`) {
+  return useBalance({
+    address,
+    query: { enabled: !!address, refetchInterval: 10_000 },
+  });
+}
 
 export function usePoolStats() {
   return useReadContract({

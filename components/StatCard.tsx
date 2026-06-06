@@ -11,33 +11,21 @@ interface StatCardProps {
 }
 
 export function StatCard({ label, value, sub, accent, cyan, className, style }: StatCardProps) {
+  const color = accent ? "#006bff" : cyan ? "#0ae8f0" : "#ffffff";
   return (
-    <div
-      style={style}
-      className={cn(
-        "relative bg-lapo-card border border-lapo-border rounded-2xl p-5 overflow-hidden",
-        "transition-all duration-200 hover:border-lapo-blue/30",
-        className
-      )}
-    >
-      {/* Subtle glow accent */}
-      {accent && (
-        <div className="absolute -top-8 -right-8 w-24 h-24 bg-lapo-blue/10 rounded-full blur-2xl pointer-events-none" />
-      )}
-      {cyan && (
-        <div className="absolute -top-8 -right-8 w-24 h-24 bg-lapo-cyan/10 rounded-full blur-2xl pointer-events-none" />
-      )}
-
-      <p className="text-xs font-medium text-lapo-muted uppercase tracking-wider mb-1">{label}</p>
+    <div style={style} className={cn("group", className)}>
+      <div
+        className="h-px w-7 mb-3 transition-[width] duration-500 ease-out group-hover:w-12"
+        style={{ background: color }}
+      />
       <p
-        className={cn(
-          "text-2xl font-bold",
-          accent ? "text-lapo-blue" : cyan ? "text-lapo-cyan" : "text-white"
-        )}
+        className="text-[2.5rem] font-bold leading-none tracking-tight mb-2"
+        style={{ color }}
       >
         {value}
       </p>
-      {sub && <p className="text-xs text-lapo-muted mt-1">{sub}</p>}
+      <p className="text-[11px] font-medium text-lapo-muted uppercase tracking-[0.14em]">{label}</p>
+      {sub && <p className="text-[11px] text-lapo-muted/50 mt-0.5">{sub}</p>}
     </div>
   );
 }

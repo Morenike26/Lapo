@@ -9,6 +9,7 @@ import {
   useApprove,
   useDeposit,
   useWithdraw,
+  useUSDCBalance,
 } from "@/hooks/useLapo";
 import { StatCard } from "@/components/StatCard";
 import { TxButton } from "@/components/TxButton";
@@ -21,6 +22,7 @@ export default function LendPage() {
   const { address, isConnected } = useAccount();
   const { data: stats } = usePoolStats();
   const { data: lenderData, refetch } = useLenderInfo(address);
+  const { data: nativeBal } = useUSDCBalance(address);
 
   const [tab, setTab]       = useState<Tab>("deposit");
   const [amount, setAmount] = useState("");
@@ -33,7 +35,8 @@ export default function LendPage() {
 
   const myShares    = (lenderData?.[0]?.result as bigint | undefined) ?? 0n;
   const myUSDCValue = (lenderData?.[1]?.result as bigint | undefined) ?? 0n;
-  const usdcBal     = (lenderData?.[2]?.result as bigint | undefined) ?? 0n;
+  // Native USDC balance (Arc's native token) — ERC20 balanceOf returns 0 on Arc
+  const usdcBal     = nativeBal?.value ?? (lenderData?.[2]?.result as bigint | undefined) ?? 0n;
   const allowance   = (lenderData?.[3]?.result as bigint | undefined) ?? 0n;
 
   const totalShares = stats?.[5] ?? 0n;
@@ -82,41 +85,42 @@ export default function LendPage() {
     ? formatUSDC(usdcBal, 6).replace(/,/g, "")
     : formatUSDC(myUSDCValue, 6).replace(/,/g, "");
 
-  const actionLabel = () => {
-    if (tab === "deposit") return needsApproval ? "Approve USDC" : "Deposit";
-    return "Withdraw";
-  };
+  const actionLabel = tab === "deposit"
+    ? (needsApproval ? "Approve USDC" : "Deposit")
+    : "Withdraw";
 
-  const loadingText = () => {
-    if (approve.isPending || approve.isConfirming) return "Approving…";
-    return "Confirming…";
-  };
+  const loadingText = approve.isPending || approve.isConfirming ? "Approving…" : "Confirming…";
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
-      <div className="mb-8 animate-fade-up">
+      <div className="mb-10 animate-fade-up">
         <h1 className="text-3xl font-bold mb-1">Lend</h1>
         <p className="text-lapo-muted">
           Deposit USDC into the pool and collect your share of every loan that gets repaid.
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Left: Stats */}
-        <div className="space-y-4">
-          <StatCard label="Pool TVL"       value={`$${formatUSDC(tvl)}`}    accent />
-          <StatCard label="Total Borrowed" value={`$${formatUSDC(borrowed)}`} />
-          <StatCard label="Utilization"    value={`${formatUtilization(utilization)}%`} />
-          <StatCard label="Current APY"   value={`${formatBps(apy)}%`}    cyan />
+      {/* Stats strip */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 border-b border-lapo-border pb-10 mb-10">
+        <StatCard label="Pool TVL"       value={`$${formatUSDC(tvl)}`}                 accent />
+        <StatCard label="Total Borrowed" value={`$${formatUSDC(borrowed)}`}             />
+        <StatCard label="Utilization"    value={`${formatUtilization(utilization)}%`}   />
+        <StatCard label="Current APY"   value={`${formatBps(apy)}%`}                  cyan />
+      </div>
 
-          {isConnected && (
-            <div className="bg-lapo-card border border-lapo-border rounded-2xl p-5 space-y-3">
-              <p className="text-xs font-medium text-lapo-muted uppercase tracking-wider">My Position</p>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-lapo-muted">Deposited value</span>
-                  <span className="font-semibold text-white">${formatUSDC(myUSDCValue)}</span>
-                </div>
+      <div className="grid lg:grid-cols-5 gap-12">
+        {/* Left: position sidebar */}
+        <div className="lg:col-span-2 space-y-8">
+          {isConnected ? (
+            <>
+              <div>
+                <p className="text-[11px] font-medium text-lapo-muted uppercase tracking-[0.14em] mb-4">
+                  My Position
+                </p>
+                <p className="text-4xl font-bold mb-1">${formatUSDC(myUSDCValue)}</p>
+                <p className="text-sm text-lapo-muted">deposited value</p>
+              </div>
+              <div className="border-t border-lapo-border pt-6 space-y-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-lapo-muted">Pool share</span>
                   <span className="font-semibold text-lapo-cyan">{poolShare}%</span>
@@ -125,126 +129,128 @@ export default function LendPage() {
                   <span className="text-lapo-muted">LP shares</span>
                   <span className="font-mono text-xs text-lapo-muted">{formatUSDC(myShares, 4)}</span>
                 </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-lapo-muted">Wallet balance</span>
+                  <span>${formatUSDC(usdcBal)} USDC</span>
+                </div>
               </div>
-            </div>
+              <div className="border-t border-lapo-border pt-6">
+                <p className="text-[11px] font-medium text-lapo-muted uppercase tracking-[0.14em] mb-3">
+                  Rate model
+                </p>
+                <p className="text-sm text-lapo-muted leading-relaxed">
+                  <span className="text-white font-mono text-xs">5% + utilization × 45%</span>
+                  <br />
+                  Starts at 5% and climbs to 50% as the pool fills up with active loans.
+                </p>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-lapo-muted pt-2">
+              Connect your wallet to see your position.
+            </p>
           )}
         </div>
 
-        {/* Right: Action panel */}
-        <div className="lg:col-span-2">
-          <div className="bg-lapo-card border border-lapo-border rounded-2xl overflow-hidden">
-            <div className="flex border-b border-lapo-border">
-              {(["deposit", "withdraw"] as Tab[]).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => { setTab(t); setAmount(""); }}
-                  className={cn(
-                    "flex-1 py-4 text-sm font-semibold capitalize transition-colors",
-                    tab === t
-                      ? "text-lapo-blue border-b-2 border-lapo-blue bg-lapo-blue/5"
-                      : "text-lapo-muted hover:text-white"
-                  )}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
+        {/* Right: action panel */}
+        <div className="lg:col-span-3">
+          {/* Underline tab selector */}
+          <div className="flex gap-8 border-b border-lapo-border mb-8">
+            {(["deposit", "withdraw"] as Tab[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => { setTab(t); setAmount(""); }}
+                className={cn(
+                  "pb-3 text-sm font-semibold capitalize transition-colors border-b-2 -mb-px",
+                  tab === t
+                    ? "text-white border-lapo-blue"
+                    : "text-lapo-muted border-transparent hover:text-white/60"
+                )}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
 
-            <div className="p-6 space-y-5">
-              {!isConnected ? (
-                <div className="text-center py-10 text-lapo-muted">
-                  <p className="text-sm">Connect your wallet to deposit or withdraw.</p>
-                </div>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-xs font-medium text-lapo-muted mb-2">
-                      Amount (USDC)
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        placeholder="0.00"
-                        className="w-full bg-lapo-dark border border-lapo-border rounded-xl px-4 py-3.5 text-lg font-semibold text-white placeholder:text-lapo-muted/40 focus:outline-none focus:border-lapo-blue/60 transition-colors"
-                      />
-                      <button
-                        onClick={() => setAmount(maxAmount)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-lapo-blue hover:text-lapo-cyan transition-colors px-2 py-1 rounded-md hover:bg-lapo-blue/10"
-                      >
-                        MAX
-                      </button>
-                    </div>
-                    <p className="text-xs text-lapo-muted mt-1.5">
-                      {tab === "deposit"
-                        ? `Wallet balance: $${formatUSDC(usdcBal)}`
-                        : `Available to withdraw: $${formatUSDC(myUSDCValue)}`}
-                    </p>
-                  </div>
-
-                  {amount && Number(amount) > 0 && (
-                    <div className="bg-lapo-dark/60 border border-lapo-border/60 rounded-xl p-4 space-y-2 text-sm">
-                      {tab === "deposit" ? (
-                        <>
-                          <div className="flex justify-between">
-                            <span className="text-lapo-muted">You deposit</span>
-                            <span>${Number(amount).toLocaleString()} USDC</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-lapo-muted">Current APY</span>
-                            <span className="text-lapo-cyan">{formatBps(apy)}%</span>
-                          </div>
-                          {needsApproval && (
-                            <div className="flex justify-between text-lapo-muted/70">
-                              <span>Step 1 of 2</span>
-                              <span>Approve then Deposit</span>
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <div className="flex justify-between">
-                          <span className="text-lapo-muted">You receive</span>
-                          <span>≈ ${Number(amount).toLocaleString()} USDC</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {txMsg && (
-                    <div className="flex items-center gap-2 p-3 rounded-xl bg-green-500/10 border border-green-500/20 text-green-400 text-sm animate-fade-up">
-                      <CheckCircle size={16} />
-                      {txMsg}
-                    </div>
-                  )}
-
-                  {(deposit.error || withdraw.error || approve.error) && (
-                    <p className="text-xs text-red-400 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
-                      {(deposit.error || withdraw.error || approve.error)?.message?.slice(0, 160)}
-                    </p>
-                  )}
-
-                  <TxButton
-                    onClick={handleAction}
-                    disabled={!amount || Number(amount) <= 0}
-                    loading={isLoading}
-                    loadingText={loadingText()}
+          {!isConnected ? (
+            <p className="text-sm text-lapo-muted">Connect your wallet to deposit or withdraw.</p>
+          ) : (
+            <div className="space-y-8">
+              {/* Underline-style amount input */}
+              <div className="border-b border-lapo-border focus-within:border-lapo-blue pb-3 transition-colors">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] text-lapo-muted uppercase tracking-[0.14em]">Amount</span>
+                  <button
+                    onClick={() => setAmount(maxAmount)}
+                    className="text-xs font-semibold text-lapo-blue hover:text-lapo-cyan transition-colors"
                   >
-                    {actionLabel()}
-                  </TxButton>
-                </>
-              )}
-            </div>
-          </div>
+                    MAX &nbsp;
+                    <span className="text-lapo-muted font-normal">
+                      ${tab === "deposit" ? formatUSDC(usdcBal) : formatUSDC(myUSDCValue)}
+                    </span>
+                  </button>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="flex-1 bg-transparent text-4xl font-bold text-white placeholder:text-lapo-muted/20 focus:outline-none"
+                  />
+                  <span className="text-lapo-muted font-medium pb-1">USDC</span>
+                </div>
+              </div>
 
-          <div className="mt-4 bg-lapo-card border border-lapo-border rounded-2xl p-5">
-            <p className="text-xs font-medium text-lapo-muted uppercase tracking-wider mb-3">How the rate works</p>
-            <p className="text-sm text-lapo-muted leading-relaxed">
-              APY = <span className="text-white font-mono">5% + utilization × 45%</span>.
-              At 0% utilization you earn a base 5%. As the pool gets deployed into loans,
-              rates climb linearly up to 50% at full utilization. Your yield grows as borrowers repay.
-            </p>
-          </div>
+              {/* Preview */}
+              {amount && Number(amount) > 0 && (
+                <div className="space-y-3 text-sm animate-fade-up">
+                  {tab === "deposit" ? (
+                    <>
+                      <div className="flex justify-between border-b border-lapo-border/40 pb-2">
+                        <span className="text-lapo-muted">You deposit</span>
+                        <span>${Number(amount).toLocaleString()} USDC</span>
+                      </div>
+                      <div className="flex justify-between border-b border-lapo-border/40 pb-2">
+                        <span className="text-lapo-muted">Current APY</span>
+                        <span className="text-lapo-cyan">{formatBps(apy)}%</span>
+                      </div>
+                      {needsApproval && (
+                        <p className="text-[11px] text-lapo-muted/60">Step 1 of 2 — Approve then Deposit</p>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex justify-between border-b border-lapo-border/40 pb-2">
+                      <span className="text-lapo-muted">You receive</span>
+                      <span>≈ ${Number(amount).toLocaleString()} USDC</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {txMsg && (
+                <div className="flex items-center gap-2 text-green-400 text-sm animate-fade-up">
+                  <CheckCircle size={14} />
+                  {txMsg}
+                </div>
+              )}
+
+              {(deposit.error || withdraw.error || approve.error) && (
+                <p className="text-xs text-red-400">
+                  {(deposit.error || withdraw.error || approve.error)?.message?.slice(0, 140)}
+                </p>
+              )}
+
+              <TxButton
+                onClick={handleAction}
+                disabled={!amount || Number(amount) <= 0}
+                loading={isLoading}
+                loadingText={loadingText}
+              >
+                {actionLabel}
+              </TxButton>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   title: "Lapo — On-Chain Credit on Arc",
   description:
     "A permissionless USDC lending pool on Arc Testnet. Lenders earn 90% of all interest. Borrowers build an on-chain credit score and unlock progressive credit lines.",
-  icons: { icon: "/favicon.ico" },
+  icons: { icon: "/favicon.svg", shortcut: "/favicon.svg", apple: "/favicon.svg" },
   openGraph: {
     title: "Lapo — On-Chain Credit on Arc",
     description:
