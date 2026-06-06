@@ -13,12 +13,12 @@ import { LAPO_ADDRESS, USDC_ADDRESS, LAPO_ABI, ERC20_ABI } from "@/lib/contracts
 
 // Gas limits — hardcoded to skip eth_estimateGas + simulation round-trips on every tx
 const GAS = {
-  approve:             80_000n,
-  deposit:            120_000n,
-  withdraw:           100_000n,
-  bootstrap:          100_000n,
-  requestLoan:        160_000n,
-  repayLoan:          140_000n,
+  approve:             50_000n,
+  deposit:            200_000n,
+  withdraw:           180_000n,
+  bootstrap:          150_000n,
+  requestLoan:        220_000n,
+  repayLoan:          200_000n,
   markDefault:         80_000n,
 } as const;
 
