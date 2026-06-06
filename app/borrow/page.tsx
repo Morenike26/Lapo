@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
+import { CheckCircle, Plus } from "lucide-react";
 import {
   useBorrowerInfo,
   usePoolStats,
@@ -139,14 +140,13 @@ export default function BorrowPage() {
   const fee        = amount ? Number(amount) * 0.005 : 0;
   const disbursed  = amount ? Number(amount) - fee : 0;
 
-  // Need approval for repayment (we pre-approve max; bootstrap needs 10 USDC)
   const needsBootstrapApproval = score === 0n &&
     allowance < parseUnits("10", 18);
 
-  const bootstrap  = useBootstrap();
-  const approve    = useApprove();
+  const bootstrap   = useBootstrap();
+  const approve     = useApprove();
   const requestLoan = useRequestLoan();
-  const repayLoan  = useRepayLoan();
+  const repayLoan   = useRepayLoan();
   const markDefault = useMarkDefault();
 
   const [repayingId, setRepayingId] = useState<bigint | null>(null);
@@ -160,11 +160,11 @@ export default function BorrowPage() {
       refetch();
       setAmount("");
       const msg =
-        bootstrap.isSuccess    ? "Reputation bootstrapped! Score: 100" :
-        requestLoan.isSuccess  ? "Loan created! Check your active loans." :
-        repayLoan.isSuccess    ? "Loan repaid! Your score increased." :
-        approve.isSuccess      ? "Approved — now bootstrap your reputation." :
-        "Default marked.";
+        bootstrap.isSuccess    ? "Reputation bootstrapped. Starting score: 100." :
+        requestLoan.isSuccess  ? "Loan created. Check your active loans below." :
+        repayLoan.isSuccess    ? "Loan repaid. Your score went up." :
+        approve.isSuccess      ? "Approved. Ready to bootstrap your reputation." :
+        "Default recorded.";
       setTxMsg(msg);
       setRepayingId(null);
       setTimeout(() => setTxMsg(null), 5000);
@@ -179,13 +179,14 @@ export default function BorrowPage() {
   const handleDefault = (id: bigint) => markDefault.markDefault(id);
 
   const canBorrow = score >= 100n;
-  const activeLoanIds = loanIds; // show all, LoanRow handles display
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
       <div className="mb-8 animate-fade-up">
         <h1 className="text-3xl font-bold mb-1">Borrow</h1>
-        <p className="text-lapo-muted">Build your on-chain credit score and unlock USDC loans.</p>
+        <p className="text-lapo-muted">
+          Your credit score lives on-chain. Grow it by repaying loans and unlock bigger credit lines over time.
+        </p>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
@@ -207,23 +208,22 @@ export default function BorrowPage() {
             </div>
           ) : (
             <div className="bg-lapo-card border border-lapo-border rounded-2xl p-5 text-center">
-              <p className="text-sm text-lapo-muted">Connect wallet to see your reputation.</p>
+              <p className="text-sm text-lapo-muted">Connect your wallet to see your reputation.</p>
             </div>
           )}
 
-          <StatCard label="Max Borrow" value={`$${formatUSDC(maxBorrow)}`} accent />
-          <StatCard label="Current APY" value={`${formatBps(apy)}%`} sub="Fixed at origination" cyan />
+          <StatCard label="Credit Limit"  value={`$${formatUSDC(maxBorrow)}`} accent />
+          <StatCard label="Current APY"   value={`${formatBps(apy)}%`} sub="Locked in at origination" cyan />
 
-          {/* Credit tiers */}
           <div className="bg-lapo-card border border-lapo-border rounded-2xl p-5">
             <p className="text-xs font-medium text-lapo-muted uppercase tracking-wider mb-3">Credit Tiers</p>
             <div className="space-y-2 text-xs">
               {[
-                { range: "0–99",    tier: "Unrated",  limit: "No access",    color: "#7090b0" },
-                { range: "100–299", tier: "Starter",  limit: "Up to $1,000", color: "#0ae8f0" },
-                { range: "300–599", tier: "Trusted",  limit: "Up to $5,000", color: "#006bff" },
-                { range: "600–999", tier: "Verified", limit: "Up to $20,000",color: "#004796" },
-                { range: "1000",    tier: "Prime",    limit: "Up to $50,000",color: "#0ae8f0" },
+                { range: "0–99",    tier: "Unrated",  limit: "No access",     color: "#7090b0" },
+                { range: "100–299", tier: "Starter",  limit: "Up to $1,000",  color: "#0ae8f0" },
+                { range: "300–599", tier: "Trusted",  limit: "Up to $5,000",  color: "#006bff" },
+                { range: "600–999", tier: "Verified", limit: "Up to $20,000", color: "#004796" },
+                { range: "1000",    tier: "Prime",    limit: "Up to $50,000", color: "#0ae8f0" },
               ].map((t) => (
                 <div key={t.tier} className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -245,19 +245,20 @@ export default function BorrowPage() {
             <div className="bg-lapo-card border border-lapo-cyan/30 rounded-2xl p-6 animate-fade-up">
               <div className="flex items-start gap-4">
                 <div className="w-10 h-10 rounded-xl bg-lapo-cyan/10 flex items-center justify-center flex-none">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                    <path d="M12 2v20M6 12h12" stroke="#0ae8f0" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
+                  <Plus size={18} color="#0ae8f0" strokeWidth={2} />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold mb-1">Bootstrap Your Reputation</h3>
+                  <h3 className="font-semibold mb-1">Start your credit history</h3>
                   <p className="text-sm text-lapo-muted mb-4">
-                    Start with a proof-of-intent: 10 USDC is approved and immediately refunded.
-                    You receive <span className="text-white font-medium">100 score points</span> — enough
-                    to take a micro-loan and begin building your credit history.
+                    Commit 10 USDC as a proof of intent. The funds come straight back to you and
+                    your wallet receives <span className="text-white font-medium">100 score points</span> —
+                    enough to take your first loan and start building a real on-chain credit record.
                   </p>
                   {txMsg && (
-                    <p className="text-sm text-green-400 mb-3">{txMsg}</p>
+                    <div className="flex items-center gap-2 text-sm text-green-400 mb-3">
+                      <CheckCircle size={14} />
+                      {txMsg}
+                    </div>
                   )}
                   {needsBootstrapApproval ? (
                     <TxButton
@@ -289,7 +290,6 @@ export default function BorrowPage() {
               </div>
 
               <div className="p-6 space-y-5">
-                {/* Amount */}
                 <div>
                   <label className="block text-xs font-medium text-lapo-muted mb-2">
                     Loan Amount (USDC)
@@ -315,9 +315,8 @@ export default function BorrowPage() {
                   </p>
                 </div>
 
-                {/* Duration */}
                 <div>
-                  <label className="block text-xs font-medium text-lapo-muted mb-2">Loan Duration</label>
+                  <label className="block text-xs font-medium text-lapo-muted mb-2">Loan Term</label>
                   <div className="grid grid-cols-3 gap-2">
                     {DURATIONS.map((d) => (
                       <button
@@ -336,7 +335,6 @@ export default function BorrowPage() {
                   </div>
                 </div>
 
-                {/* Preview */}
                 {amount && Number(amount) > 0 && (
                   <div className="bg-lapo-dark/60 border border-lapo-border/60 rounded-xl p-4 space-y-2 text-sm animate-fade-up">
                     <div className="flex justify-between">
@@ -360,7 +358,7 @@ export default function BorrowPage() {
                       <span>{formatBps(apy)}%</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-lapo-muted">Duration</span>
+                      <span className="text-lapo-muted">Term</span>
                       <span>{durationLabel(duration)}</span>
                     </div>
                   </div>
@@ -368,9 +366,7 @@ export default function BorrowPage() {
 
                 {txMsg && (
                   <div className="flex items-center gap-2 p-3 rounded-xl bg-green-500/10 border border-green-500/20 text-green-400 text-sm animate-fade-up">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                      <path d="M5 12l5 5L19 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
+                    <CheckCircle size={16} />
                     {txMsg}
                   </div>
                 )}
@@ -394,11 +390,11 @@ export default function BorrowPage() {
           )}
 
           {/* Active loans */}
-          {isConnected && activeLoanIds.length > 0 && (
+          {isConnected && loanIds.length > 0 && (
             <div className="animate-fade-up">
               <h2 className="font-semibold mb-4">Your Loans</h2>
               <div className="space-y-3">
-                {activeLoanIds.map((id) => (
+                {loanIds.map((id) => (
                   <LoanRow
                     key={id.toString()}
                     loanId={id}

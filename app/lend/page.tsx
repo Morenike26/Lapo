@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
+import { CheckCircle } from "lucide-react";
 import {
   usePoolStats,
   useLenderInfo,
@@ -57,9 +58,9 @@ export default function LendPage() {
       refetch();
       setAmount("");
       setTxMsg(
-        deposit.isSuccess  ? "Deposit confirmed!" :
-        withdraw.isSuccess ? "Withdrawal confirmed!" :
-        "Approval confirmed — now deposit."
+        deposit.isSuccess  ? "Deposit confirmed." :
+        withdraw.isSuccess ? "Withdrawal confirmed." :
+        "Approved. You can now deposit."
       );
       setTimeout(() => setTxMsg(null), 4000);
     }
@@ -71,7 +72,6 @@ export default function LendPage() {
       if (needsApproval) { approve.approve(); return; }
       deposit.deposit(amount);
     } else {
-      // Withdraw: amount is USDC value → compute shares
       if (myUSDCValue === 0n || myShares === 0n) return;
       const sharesToBurn = (parseUnits(amount, 18) * myShares) / myUSDCValue;
       withdraw.withdraw(sharesToBurn);
@@ -96,16 +96,18 @@ export default function LendPage() {
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
       <div className="mb-8 animate-fade-up">
         <h1 className="text-3xl font-bold mb-1">Lend</h1>
-        <p className="text-lapo-muted">Deposit USDC into the pool and earn interest from borrowers.</p>
+        <p className="text-lapo-muted">
+          Deposit USDC into the pool and collect your share of every loan that gets repaid.
+        </p>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Left: Stats */}
         <div className="space-y-4">
-          <StatCard label="Pool TVL"           value={`$${formatUSDC(tvl)}`}    accent />
-          <StatCard label="Total Borrowed"     value={`$${formatUSDC(borrowed)}`} />
-          <StatCard label="Utilization"        value={`${formatUtilization(utilization)}%`} />
-          <StatCard label="Current APY"        value={`${formatBps(apy)}%`}    cyan />
+          <StatCard label="Pool TVL"       value={`$${formatUSDC(tvl)}`}    accent />
+          <StatCard label="Total Borrowed" value={`$${formatUSDC(borrowed)}`} />
+          <StatCard label="Utilization"    value={`${formatUtilization(utilization)}%`} />
+          <StatCard label="Current APY"   value={`${formatBps(apy)}%`}    cyan />
 
           {isConnected && (
             <div className="bg-lapo-card border border-lapo-border rounded-2xl p-5 space-y-3">
@@ -131,7 +133,6 @@ export default function LendPage() {
         {/* Right: Action panel */}
         <div className="lg:col-span-2">
           <div className="bg-lapo-card border border-lapo-border rounded-2xl overflow-hidden">
-            {/* Tabs */}
             <div className="flex border-b border-lapo-border">
               {(["deposit", "withdraw"] as Tab[]).map((t) => (
                 <button
@@ -156,7 +157,6 @@ export default function LendPage() {
                 </div>
               ) : (
                 <>
-                  {/* Amount input */}
                   <div>
                     <label className="block text-xs font-medium text-lapo-muted mb-2">
                       Amount (USDC)
@@ -179,11 +179,10 @@ export default function LendPage() {
                     <p className="text-xs text-lapo-muted mt-1.5">
                       {tab === "deposit"
                         ? `Wallet balance: $${formatUSDC(usdcBal)}`
-                        : `Withdrawable: $${formatUSDC(myUSDCValue)}`}
+                        : `Available to withdraw: $${formatUSDC(myUSDCValue)}`}
                     </p>
                   </div>
 
-                  {/* Preview */}
                   {amount && Number(amount) > 0 && (
                     <div className="bg-lapo-dark/60 border border-lapo-border/60 rounded-xl p-4 space-y-2 text-sm">
                       {tab === "deposit" ? (
@@ -193,38 +192,32 @@ export default function LendPage() {
                             <span>${Number(amount).toLocaleString()} USDC</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-lapo-muted">Estimated APY</span>
+                            <span className="text-lapo-muted">Current APY</span>
                             <span className="text-lapo-cyan">{formatBps(apy)}%</span>
                           </div>
                           {needsApproval && (
                             <div className="flex justify-between text-lapo-muted/70">
                               <span>Step 1 of 2</span>
-                              <span>Approve → Deposit</span>
+                              <span>Approve then Deposit</span>
                             </div>
                           )}
                         </>
                       ) : (
-                        <>
-                          <div className="flex justify-between">
-                            <span className="text-lapo-muted">You receive</span>
-                            <span>≈ ${Number(amount).toLocaleString()} USDC</span>
-                          </div>
-                        </>
+                        <div className="flex justify-between">
+                          <span className="text-lapo-muted">You receive</span>
+                          <span>≈ ${Number(amount).toLocaleString()} USDC</span>
+                        </div>
                       )}
                     </div>
                   )}
 
-                  {/* Success msg */}
                   {txMsg && (
                     <div className="flex items-center gap-2 p-3 rounded-xl bg-green-500/10 border border-green-500/20 text-green-400 text-sm animate-fade-up">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                        <path d="M5 12l5 5L19 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
+                      <CheckCircle size={16} />
                       {txMsg}
                     </div>
                   )}
 
-                  {/* Error msg */}
                   {(deposit.error || withdraw.error || approve.error) && (
                     <p className="text-xs text-red-400 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
                       {(deposit.error || withdraw.error || approve.error)?.message?.slice(0, 160)}
@@ -244,13 +237,12 @@ export default function LendPage() {
             </div>
           </div>
 
-          {/* Interest model explainer */}
           <div className="mt-4 bg-lapo-card border border-lapo-border rounded-2xl p-5">
-            <p className="text-xs font-medium text-lapo-muted uppercase tracking-wider mb-3">Interest Rate Model</p>
+            <p className="text-xs font-medium text-lapo-muted uppercase tracking-wider mb-3">How the rate works</p>
             <p className="text-sm text-lapo-muted leading-relaxed">
               APY = <span className="text-white font-mono">5% + utilization × 45%</span>.
-              At 0% utilization lenders earn a base 5%. As the pool fills up, rates climb linearly
-              to 50% APY at full utilization. Your yield compounds as borrowers repay.
+              At 0% utilization you earn a base 5%. As the pool gets deployed into loans,
+              rates climb linearly up to 50% at full utilization. Your yield grows as borrowers repay.
             </p>
           </div>
         </div>
