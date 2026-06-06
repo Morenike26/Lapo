@@ -9,7 +9,6 @@ import {
   useApprove,
   useDeposit,
   useWithdraw,
-  useUSDCBalance,
 } from "@/hooks/useLapo";
 import { StatCard } from "@/components/StatCard";
 import { TxButton } from "@/components/TxButton";
@@ -22,7 +21,6 @@ export default function LendPage() {
   const { address, isConnected } = useAccount();
   const { data: stats } = usePoolStats();
   const { data: lenderData, refetch } = useLenderInfo(address);
-  const { data: nativeBal } = useUSDCBalance(address);
 
   const [tab, setTab]       = useState<Tab>("deposit");
   const [amount, setAmount] = useState("");
@@ -35,8 +33,7 @@ export default function LendPage() {
 
   const myShares    = (lenderData?.[0]?.result as bigint | undefined) ?? 0n;
   const myUSDCValue = (lenderData?.[1]?.result as bigint | undefined) ?? 0n;
-  // ERC20 balanceOf returns 6-decimal amounts matching the contract
-  const usdcBal     = (lenderData?.[2]?.result as bigint | undefined) ?? nativeBal?.value ?? 0n;
+  const usdcBal     = (lenderData?.[2]?.result as bigint | undefined) ?? 0n;
   const allowance   = (lenderData?.[3]?.result as bigint | undefined) ?? 0n;
 
   const totalShares = stats?.[5] ?? 0n;
@@ -57,17 +54,21 @@ export default function LendPage() {
     withdraw.isPending || withdraw.isConfirming;
 
   useEffect(() => {
-    if (deposit.isSuccess || withdraw.isSuccess || approve.isSuccess) {
+    if (deposit.isSuccess || withdraw.isSuccess) {
       refetch();
       setAmount("");
-      setTxMsg(
-        deposit.isSuccess  ? "Deposit confirmed." :
-        withdraw.isSuccess ? "Withdrawal confirmed." :
-        "Approved. You can now deposit."
-      );
+      setTxMsg(deposit.isSuccess ? "Deposit confirmed." : "Withdrawal confirmed.");
       setTimeout(() => setTxMsg(null), 4000);
     }
-  }, [deposit.isSuccess, withdraw.isSuccess, approve.isSuccess]);
+  }, [deposit.isSuccess, withdraw.isSuccess]);
+
+  useEffect(() => {
+    if (approve.isSuccess) {
+      refetch();
+      setTxMsg("Approved. You can now deposit.");
+      setTimeout(() => setTxMsg(null), 4000);
+    }
+  }, [approve.isSuccess]);
 
   const parsedAmount = amount ? parseUnits(amount, 6) : 0n;
 
