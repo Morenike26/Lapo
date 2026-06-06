@@ -8,7 +8,7 @@ import {
   useAccount,
   useBalance,
 } from "wagmi";
-import { parseUnits, maxUint256 } from "viem";
+import { parseUnits } from "viem";
 import { LAPO_ADDRESS, USDC_ADDRESS, LAPO_ABI, ERC20_ABI } from "@/lib/contracts";
 
 // ── Native USDC balance (Arc's native token) ─────────────────────────────────
@@ -98,7 +98,7 @@ export function useDeposit() {
       address: LAPO_ADDRESS,
       abi: LAPO_ABI,
       functionName: "deposit",
-      args: [parseUnits(amount, 18)],
+      args: [parseUnits(amount, 6)],
     });
 
   return { deposit, isPending, isConfirming, isSuccess, error };

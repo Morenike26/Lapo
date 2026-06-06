@@ -132,8 +132,8 @@ export default function BorrowPage() {
   const defaulted = (borrowerData?.[2]?.result as bigint | undefined) ?? 0n;
   const maxBorrow = (borrowerData?.[3]?.result as bigint | undefined) ?? 0n;
   const loanIds   = (borrowerData?.[4]?.result as bigint[] | undefined) ?? [];
-  // Native USDC balance (Arc's native token) — ERC20 balanceOf returns 0 on Arc
-  const usdcBal   = nativeBal?.value ?? (borrowerData?.[5]?.result as bigint | undefined) ?? 0n;
+  // ERC20 balanceOf returns 6-decimal amounts matching the contract
+  const usdcBal   = (borrowerData?.[5]?.result as bigint | undefined) ?? nativeBal?.value ?? 0n;
   const allowance = (borrowerData?.[6]?.result as bigint | undefined) ?? 0n;
 
   const apy = stats?.[4] ?? 0n;
@@ -145,7 +145,7 @@ export default function BorrowPage() {
   const fee        = amount ? Number(amount) * 0.005 : 0;
   const disbursed  = amount ? Number(amount) - fee : 0;
 
-  const BOOTSTRAP_AMOUNT = parseUnits("10", 18);
+  const BOOTSTRAP_AMOUNT = parseUnits("10", 6);
   const insufficientForBootstrap = usdcBal < BOOTSTRAP_AMOUNT;
   const needsBootstrapApproval = score === 0n && allowance < BOOTSTRAP_AMOUNT;
 
@@ -179,7 +179,7 @@ export default function BorrowPage() {
   const handleDefault = (id: bigint) => markDefault.markDefault(id);
   const canBorrow = score >= 100n;
 
-  const parsedLoanAmount = amount ? parseUnits(amount, 18) : 0n;
+  const parsedLoanAmount = amount ? parseUnits(amount, 6) : 0n;
   const loanExceedsLimit = parsedLoanAmount > maxBorrow;
   // Pool must have liquidity to issue a loan; the pool contract enforces this,
   // but we also check balance isn't needed since borrowers receive USDC not spend it.

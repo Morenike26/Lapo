@@ -134,7 +134,7 @@ contract LapoLending {
 
     /**
      * @notice Deposit USDC into the lending pool and receive LP shares.
-     * @param amount USDC amount (18 decimals on Arc).
+     * @param amount USDC amount (6 decimals).
      */
     function deposit(uint256 amount) external returns (uint256 issued) {
         if (amount == 0) revert ZeroAmount();
@@ -309,7 +309,7 @@ contract LapoLending {
      */
     function bootstrapReputation() external {
         if (reputationScore[msg.sender] != 0) revert ScoreTooLow();
-        uint256 stake = 10 * 1e18; // 10 USDC
+        uint256 stake = 10 * 1e6; // 10 USDC (6 decimals)
 
         require(USDC.transferFrom(msg.sender, address(this), stake), "stake failed");
         require(USDC.transfer(msg.sender, stake), "refund failed");
@@ -416,12 +416,12 @@ contract LapoLending {
 
         uint256 byScore = (assets * pct) / BASIS_POINTS;
 
-        // Hard caps per tier (in USDC, 18 decimals)
+        // Hard caps per tier (in USDC, 6 decimals)
         uint256 cap;
-        if (score < 300)      cap = 1_000  * 1e18;
-        else if (score < 600) cap = 5_000  * 1e18;
-        else if (score < 1000)cap = 20_000 * 1e18;
-        else                  cap = 50_000 * 1e18;
+        if (score < 300)      cap = 1_000  * 1e6;
+        else if (score < 600) cap = 5_000  * 1e6;
+        else if (score < 1000)cap = 20_000 * 1e6;
+        else                  cap = 50_000 * 1e6;
 
         return _min(byScore, cap);
     }

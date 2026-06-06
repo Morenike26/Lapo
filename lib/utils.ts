@@ -10,7 +10,7 @@ export function shortAddress(address: string): string {
 }
 
 export function formatUSDC(raw: bigint, decimals = 2): string {
-  const n = Number(raw) / 1e18;
+  const n = Number(raw) / 1e6;
   return n.toLocaleString("en-US", {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,

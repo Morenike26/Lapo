@@ -35,8 +35,8 @@ export default function LendPage() {
 
   const myShares    = (lenderData?.[0]?.result as bigint | undefined) ?? 0n;
   const myUSDCValue = (lenderData?.[1]?.result as bigint | undefined) ?? 0n;
-  // Native USDC balance (Arc's native token) — ERC20 balanceOf returns 0 on Arc
-  const usdcBal     = nativeBal?.value ?? (lenderData?.[2]?.result as bigint | undefined) ?? 0n;
+  // ERC20 balanceOf returns 6-decimal amounts matching the contract
+  const usdcBal     = (lenderData?.[2]?.result as bigint | undefined) ?? nativeBal?.value ?? 0n;
   const allowance   = (lenderData?.[3]?.result as bigint | undefined) ?? 0n;
 
   const totalShares = stats?.[5] ?? 0n;
@@ -45,7 +45,7 @@ export default function LendPage() {
     : "0.00";
 
   const needsApproval = tab === "deposit" && amount
-    ? allowance < parseUnits(amount || "0", 18)
+    ? allowance < parseUnits(amount || "0", 6)
     : false;
 
   const approve  = useApprove();
@@ -69,7 +69,7 @@ export default function LendPage() {
     }
   }, [deposit.isSuccess, withdraw.isSuccess, approve.isSuccess]);
 
-  const parsedAmount = amount ? parseUnits(amount, 18) : 0n;
+  const parsedAmount = amount ? parseUnits(amount, 6) : 0n;
 
   // Balance checks
   const insufficientBalance = tab === "deposit"
