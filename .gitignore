@@ -43,6 +43,7 @@ contracts/lib/
 
 # vercel
 .vercel
+!.vercel/project.json
 
 # typescript
 *.tsbuildinfo

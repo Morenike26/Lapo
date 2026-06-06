@@ -1,0 +1,16 @@
+{
+  "projectId": "prj_XLrciQlvqarqzserGdsKd5kMn6pK",
+  "orgId": "team_Tn9gxgYsIJevvjmO1DCeuNAH",
+  "projectName": "lapo",
+  "settings": {
+    "createdAt": 1780754553276,
+    "framework": "nextjs",
+    "devCommand": null,
+    "installCommand": null,
+    "buildCommand": null,
+    "outputDirectory": null,
+    "rootDirectory": null,
+    "directoryListing": false,
+    "nodeVersion": "24.x"
+  }
+}
