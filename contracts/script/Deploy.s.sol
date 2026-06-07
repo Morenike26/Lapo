@@ -16,7 +16,9 @@ contract Deploy is Script {
         console.log("USDC:", USDC);
 
         vm.startBroadcast(deployerKey);
-        lending = new LapoLending(USDC, deployer);
+        // Deprecated — use DeployAll.s.sol
+        address oracle = address(0); // placeholder
+        lending = new LapoLending(USDC, oracle, deployer);
         vm.stopBroadcast();
 
         console.log("LapoLending deployed at:", address(lending));

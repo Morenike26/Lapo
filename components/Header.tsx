@@ -10,6 +10,7 @@ const NAV = [
   { href: "/",       label: "Dashboard" },
   { href: "/lend",   label: "Lend" },
   { href: "/borrow", label: "Borrow" },
+  { href: "/faucet", label: "Faucet" },
 ];
 
 export function Header() {

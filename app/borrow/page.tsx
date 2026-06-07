@@ -2,353 +2,416 @@
 
 import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
-import { CheckCircle, Plus } from "lucide-react";
+import { CheckCircle, AlertTriangle, ArrowRight } from "lucide-react";
 import {
   useBorrowerInfo,
   usePoolStats,
-  useBootstrap,
-  useApprove,
-  useRequestLoan,
-  useRepayLoan,
-  useMarkDefault,
-  useLoanDetails,
-  useUSDCBalance,
+  useTokenPrices,
+  useApproveCollateral,
+  useApproveUSDC,
+  useOpenPosition,
+  useClosePosition,
+  useLiquidate,
+  usePositionDetails,
 } from "@/hooks/useLapo";
-import { ReputationBar } from "@/components/ReputationBar";
 import { TxButton } from "@/components/TxButton";
 import { StatCard } from "@/components/StatCard";
-import { formatUSDC, formatBps, durationLabel, timeLeft, cn } from "@/lib/utils";
-import { parseUnits } from "viem";
+import { formatUSDC, formatBps, cn } from "@/lib/utils";
+import { MWETH_ADDRESS, MWBTC_ADDRESS, MWSOL_ADDRESS, LAPO_ADDRESS, USDC_ADDRESS } from "@/lib/contracts";
+import { parseUnits, formatUnits } from "viem";
+import Link from "next/link";
 
-const DURATIONS = [
-  { label: "30 days", value: 30 * 86400 },
-  { label: "60 days", value: 60 * 86400 },
-  { label: "90 days", value: 90 * 86400 },
-];
+// ── Collateral token registry ────────────────────────────────────────────────
 
-function LoanRow({
-  loanId,
-  onRepay,
-  onDefault,
-  repaying,
+const COLLATERAL_TOKENS = [
+  { address: MWETH_ADDRESS, symbol: "mwETH", icon: "⟠", color: "#627EEA", decimals: 18, priceIdx: 0 },
+  { address: MWBTC_ADDRESS, symbol: "mwBTC", icon: "₿",  color: "#F7931A", decimals: 18, priceIdx: 1 },
+  { address: MWSOL_ADDRESS, symbol: "mwSOL", icon: "◎",  color: "#9945FF", decimals: 18, priceIdx: 2 },
+] as const;
+
+type CollToken = typeof COLLATERAL_TOKENS[number];
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function healthColor(hf: number) {
+  if (hf <= 0)   return "#7090b0";
+  if (hf < 115)  return "#ef4444";
+  if (hf < 130)  return "#f59e0b";
+  return "#22c55e";
+}
+
+function healthLabel(hf: number) {
+  if (hf <= 0)  return "Closed";
+  if (hf < 115) return "At Risk";
+  if (hf < 130) return "Caution";
+  return "Healthy";
+}
+
+function tokenPrice(raw: bigint | undefined) {
+  return raw ? Number(raw) / 1e6 : 0;
+}
+
+// ── Position row ─────────────────────────────────────────────────────────────
+
+function PositionRow({
+  positionId,
+  onClose,
+  onLiquidate,
+  closing,
 }: {
-  loanId: bigint;
-  onRepay: (id: bigint) => void;
-  onDefault: (id: bigint) => void;
-  repaying: boolean;
+  positionId: bigint;
+  onClose: (id: bigint) => void;
+  onLiquidate: (id: bigint) => void;
+  closing: boolean;
 }) {
-  const { data: loan } = useLoanDetails(loanId);
-  if (!loan) return null;
+  const { data } = usePositionDetails(positionId);
+  const pos      = data?.[0]?.result as any;
+  const hf       = Number(data?.[1]?.result ?? 0n);
+  const liqPrice = data?.[2]?.result as bigint | undefined;
+  const interest = data?.[3]?.result as bigint | undefined;
 
-  const isOverdue = !loan.repaid && !loan.defaulted &&
-    BigInt(Math.floor(Date.now() / 1000)) > loan.dueDate + 3n * 86400n;
+  if (!pos || pos.borrower === "0x0000000000000000000000000000000000000000") return null;
+  if (pos.closed || pos.liquidated) return null;
 
-  const status = loan.repaid ? "Repaid"
-    : loan.defaulted ? "Defaulted"
-    : isOverdue ? "Overdue"
-    : "Active";
-
-  const borderColor = {
-    Repaid:    "#22c55e",
-    Active:    "#0ae8f0",
-    Overdue:   "#ef4444",
-    Defaulted: "#ef4444",
-  }[status];
-
-  const statusColor = {
-    Repaid:    "text-green-400",
-    Active:    "text-lapo-cyan",
-    Overdue:   "text-red-400",
-    Defaulted: "text-red-400",
-  }[status];
-
-  const total = loan.principal + loan.interestDue;
+  const token  = COLLATERAL_TOKENS.find(t => t.address.toLowerCase() === pos.collateralToken.toLowerCase());
+  const total  = pos.borrowedUSDC + (interest ?? 0n);
+  const liqP   = liqPrice ? tokenPrice(liqPrice) : 0;
+  const color  = healthColor(hf);
 
   return (
     <div
       className="pl-4 py-4 space-y-3 border-b border-lapo-border/40 last:border-0"
-      style={{ borderLeft: `2px solid ${borderColor}` }}
+      style={{ borderLeft: `2px solid ${color}` }}
     >
       <div className="flex items-start justify-between">
         <div>
           <p className="text-[10px] text-lapo-muted font-mono uppercase tracking-wider">
-            Loan #{loanId.toString()}
+            Position #{positionId.toString()}
           </p>
-          <p className="text-xl font-bold">${formatUSDC(loan.principal)} USDC</p>
+          <p className="text-xl font-bold">
+            {formatUnits(pos.collateralAmount, 18)} {token?.symbol ?? "?"}
+            <span className="text-lapo-muted text-sm font-normal ml-2">→ ${formatUSDC(pos.borrowedUSDC)} USDC</span>
+          </p>
         </div>
-        <span className={cn("text-[10px] font-semibold uppercase tracking-widest", statusColor)}>
-          {status}
+        <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color }}>
+          {healthLabel(hf)}
         </span>
       </div>
 
       <div className="grid grid-cols-3 gap-3 text-xs">
         <div>
-          <p className="text-lapo-muted mb-0.5">Principal</p>
-          <p className="font-semibold">${formatUSDC(loan.principal)}</p>
+          <p className="text-lapo-muted mb-0.5">Health</p>
+          <p className="font-semibold" style={{ color }}>{hf > 0 ? `${hf}%` : "—"}</p>
         </div>
         <div>
           <p className="text-lapo-muted mb-0.5">Interest</p>
-          <p className="font-semibold">${formatUSDC(loan.interestDue)}</p>
+          <p className="font-semibold">${formatUSDC(interest ?? 0n)}</p>
         </div>
         <div>
-          <p className="text-lapo-muted mb-0.5">Due</p>
-          <p className="font-semibold">{timeLeft(loan.dueDate)}</p>
+          <p className="text-lapo-muted mb-0.5">Liq. price</p>
+          <p className="font-semibold">${liqP.toLocaleString("en-US", { maximumFractionDigits: 2 })}</p>
         </div>
       </div>
 
-      {!loan.repaid && !loan.defaulted && (
-        <div className="flex gap-2 pt-1">
-          <TxButton onClick={() => onRepay(loanId)} loading={repaying} loadingText="Repaying…" className="flex-1">
-            Repay ${formatUSDC(total)}
+      <div className="flex gap-2 pt-1">
+        <TxButton
+          onClick={() => onClose(positionId)}
+          loading={closing}
+          loadingText="Closing…"
+          className="flex-1"
+        >
+          Repay ${formatUSDC(total)} &amp; Close
+        </TxButton>
+        {hf > 0 && hf < 105 && (
+          <TxButton
+            onClick={() => onLiquidate(positionId)}
+            loading={false}
+            variant="danger"
+            className="flex-none px-4 !w-auto"
+          >
+            Liquidate
           </TxButton>
-          {isOverdue && (
-            <TxButton
-              onClick={() => onDefault(loanId)}
-              loading={false}
-              variant="danger"
-              className="flex-none px-4 !w-auto"
-            >
-              Default
-            </TxButton>
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
 
+// ── Main page ────────────────────────────────────────────────────────────────
+
 export default function BorrowPage() {
   const { address, isConnected } = useAccount();
-  const { data: stats } = usePoolStats();
+
+  const { data: stats }        = usePoolStats();
   const { data: borrowerData, refetch } = useBorrowerInfo(address);
-  const { data: nativeBal } = useUSDCBalance(address);
+  const { data: prices }       = useTokenPrices();
 
-  const [amount, setAmount]     = useState("");
-  const [duration, setDuration] = useState(DURATIONS[0].value);
-  const [txMsg, setTxMsg]       = useState<string | null>(null);
+  const [selectedToken, setSelectedToken] = useState<CollToken>(COLLATERAL_TOKENS[0]);
+  const [collAmount, setCollAmount]       = useState("");
+  const [borrowAmount, setBorrowAmount]   = useState("");
+  const [txMsg, setTxMsg]                 = useState<string | null>(null);
+  const [closingId, setClosingId]         = useState<bigint | null>(null);
 
-  const score     = (borrowerData?.[0]?.result as bigint | undefined) ?? 0n;
-  const completed = (borrowerData?.[1]?.result as bigint | undefined) ?? 0n;
-  const defaulted = (borrowerData?.[2]?.result as bigint | undefined) ?? 0n;
-  const maxBorrow = (borrowerData?.[3]?.result as bigint | undefined) ?? 0n;
-  const loanIds   = (borrowerData?.[4]?.result as bigint[] | undefined) ?? [];
-  // ERC20 balanceOf returns 6-decimal amounts matching the contract
-  const usdcBal   = (borrowerData?.[5]?.result as bigint | undefined) ?? nativeBal?.value ?? 0n;
-  const allowance = (borrowerData?.[6]?.result as bigint | undefined) ?? 0n;
+  const apy     = stats?.[4] ?? 0n;
 
-  const apy = stats?.[4] ?? 0n;
+  // Balances + allowances
+  const ethBal  = (borrowerData?.[0]?.result as bigint | undefined) ?? 0n;
+  const btcBal  = (borrowerData?.[1]?.result as bigint | undefined) ?? 0n;
+  const solBal  = (borrowerData?.[2]?.result as bigint | undefined) ?? 0n;
+  const balances = [ethBal, btcBal, solBal];
 
-  const estimatedInterest = amount && Number(amount) > 0
-    ? (Number(amount) * Number(apy) / 10000) * (duration / (365 * 86400))
+  const ethAllowance = (borrowerData?.[3]?.result as bigint | undefined) ?? 0n;
+  const btcAllowance = (borrowerData?.[4]?.result as bigint | undefined) ?? 0n;
+  const solAllowance = (borrowerData?.[5]?.result as bigint | undefined) ?? 0n;
+  const allowances   = [ethAllowance, btcAllowance, solAllowance];
+
+  const usdcBal   = (borrowerData?.[6]?.result as bigint | undefined) ?? 0n;
+  const positionIds = (borrowerData?.[7]?.result as bigint[] | undefined) ?? [];
+
+  // Prices
+  const ethPrice = prices?.[0]?.result as bigint | undefined;
+  const btcPrice = prices?.[1]?.result as bigint | undefined;
+  const solPrice = prices?.[2]?.result as bigint | undefined;
+  const priceList = [ethPrice, btcPrice, solPrice];
+
+  const selectedPrice   = priceList[selectedToken.priceIdx];
+  const selectedBalance = balances[selectedToken.priceIdx];
+  const selectedAllowance = allowances[selectedToken.priceIdx];
+
+  // Derived borrow math
+  const collAmountParsed = collAmount ? parseUnits(collAmount, 18) : 0n;
+  const collValueUSDC    = selectedPrice && collAmountParsed > 0n
+    ? (collAmountParsed * selectedPrice) / BigInt(1e18)
+    : 0n;
+  const maxBorrow        = collValueUSDC > 0n
+    ? (collValueUSDC * 100n) / 135n
+    : 0n;
+  const borrowParsed     = borrowAmount ? parseUnits(borrowAmount, 6) : 0n;
+  const collRatio        = borrowParsed > 0n && collValueUSDC > 0n
+    ? Number((collValueUSDC * 100n) / borrowParsed)
     : 0;
-  const totalRepay = amount ? Number(amount) + estimatedInterest : 0;
-  const fee        = amount ? Number(amount) * 0.005 : 0;
-  const disbursed  = amount ? Number(amount) - fee : 0;
+  const liqPrice         = borrowParsed > 0n && collAmountParsed > 0n
+    ? Number((borrowParsed * 105n * BigInt(1e18)) / (collAmountParsed * 100n)) / 1e6
+    : 0;
+  const fee              = borrowAmount ? Number(borrowAmount) * 0.005 : 0;
+  const disbursed        = borrowAmount ? Number(borrowAmount) - fee : 0;
 
-  const BOOTSTRAP_AMOUNT = parseUnits("10", 6);
-  const insufficientForBootstrap = usdcBal < BOOTSTRAP_AMOUNT;
-  const needsBootstrapApproval = score === 0n && allowance < BOOTSTRAP_AMOUNT;
+  const needsApproval    = collAmountParsed > 0n && selectedAllowance < collAmountParsed;
+  const insufficientBal  = collAmountParsed > selectedBalance;
+  const exceedsMax       = borrowParsed > 0n && borrowParsed > maxBorrow;
+  const poolInsufficient = borrowParsed > (stats?.[2] ?? 0n);
 
-  const bootstrap   = useBootstrap();
-  const approve     = useApprove();
-  const requestLoan = useRequestLoan();
-  const repayLoan   = useRepayLoan();
-  const markDefault = useMarkDefault();
+  // Write hooks
+  const approveCollateral = useApproveCollateral();
+  const approveUSDC       = useApproveUSDC();
+  const openPosition      = useOpenPosition();
+  const closePosition     = useClosePosition();
+  const liquidate         = useLiquidate();
 
-  const [repayingId, setRepayingId] = useState<bigint | null>(null);
-  const isRepaying = repayLoan.isPending || repayLoan.isConfirming;
+  const isOpenPending = openPosition.isPending || openPosition.isConfirming;
+  const isClosePending = closePosition.isPending || closePosition.isConfirming;
 
   useEffect(() => {
-    if (bootstrap.isSuccess || requestLoan.isSuccess || repayLoan.isSuccess ||
-        approve.isSuccess || markDefault.isSuccess) {
+    if (openPosition.isSuccess || closePosition.isSuccess || approveCollateral.isSuccess) {
       refetch();
-      setAmount("");
-      const msg =
-        bootstrap.isSuccess   ? "Reputation bootstrapped. Starting score: 100." :
-        requestLoan.isSuccess ? "Loan created. Check your active loans below." :
-        repayLoan.isSuccess   ? "Loan repaid. Your score went up." :
-        approve.isSuccess     ? "Approved. Ready to bootstrap your reputation." :
-        "Default recorded.";
+      const msg = openPosition.isSuccess ? "Position opened. USDC sent to your wallet." :
+                  closePosition.isSuccess ? "Position closed. Collateral returned." :
+                  "Approved. Ready to open position.";
       setTxMsg(msg);
-      setRepayingId(null);
+      if (openPosition.isSuccess || closePosition.isSuccess) {
+        setCollAmount(""); setBorrowAmount(""); setClosingId(null);
+      }
       setTimeout(() => setTxMsg(null), 5000);
     }
-  }, [bootstrap.isSuccess, requestLoan.isSuccess, repayLoan.isSuccess, approve.isSuccess, markDefault.isSuccess]);
+  }, [openPosition.isSuccess, closePosition.isSuccess, approveCollateral.isSuccess]);
 
-  const handleRepay   = (id: bigint) => { setRepayingId(id); repayLoan.repay(id); };
-  const handleDefault = (id: bigint) => markDefault.markDefault(id);
-  const canBorrow = score >= 100n;
+  const handleOpen = () => {
+    if (needsApproval) {
+      approveCollateral.approve(selectedToken.address, collAmountParsed);
+    } else {
+      openPosition.openPosition(selectedToken.address, collAmountParsed, borrowAmount);
+    }
+  };
 
-  const parsedLoanAmount = amount ? parseUnits(amount, 6) : 0n;
-  const loanExceedsLimit = parsedLoanAmount > maxBorrow;
-  // Pool must have liquidity to issue a loan; the pool contract enforces this,
-  // but we also check balance isn't needed since borrowers receive USDC not spend it.
+  const handleClose = (id: bigint) => { setClosingId(id); closePosition.closePosition(id); };
+  const handleLiquidate = (id: bigint) => liquidate.liquidate(id);
+
+  const openButtonLabel = needsApproval
+    ? `Approve ${collAmount || "0"} ${selectedToken.symbol}`
+    : "Open Position";
+
+  const openButtonLoading = approveCollateral.isPending || approveCollateral.isConfirming || isOpenPending;
+  const openButtonLoadingText = needsApproval ? "Approving…" : "Opening…";
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
       <div className="mb-10 animate-fade-up">
         <h1 className="text-3xl font-bold mb-1">Borrow</h1>
         <p className="text-lapo-muted">
-          Your credit score lives on-chain. Grow it by repaying loans and unlock bigger credit lines.
+          Deposit mwETH, mwBTC, or mwSOL as collateral and borrow USDC at a 135% collateral ratio.
+          Positions are liquidated at 105%.
         </p>
       </div>
 
       <div className="grid lg:grid-cols-5 gap-12">
-        {/* Left: score + tiers */}
+
+        {/* Left: token balances + stats */}
         <div className="lg:col-span-2 space-y-8">
+
           {isConnected ? (
-            <div>
-              <ReputationBar score={score} size="lg" />
-              <div className="flex gap-8 mt-6 pt-6 border-t border-lapo-border">
-                <div>
-                  <p className="text-2xl font-bold text-green-400">{completed.toString()}</p>
-                  <p className="text-[11px] text-lapo-muted mt-0.5 uppercase tracking-widest">Repaid</p>
+            <>
+              {/* Collateral balances */}
+              <div>
+                <p className="text-[11px] font-medium text-lapo-muted uppercase tracking-[0.14em] mb-4">
+                  Your collateral
+                </p>
+                <div className="space-y-3">
+                  {COLLATERAL_TOKENS.map((token, i) => {
+                    const price = priceList[i];
+                    const bal   = balances[i];
+                    const usdVal = price && bal > 0n ? Number(bal) * Number(price) / 1e24 : 0;
+                    return (
+                      <div key={token.symbol} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base" style={{ color: token.color }}>{token.icon}</span>
+                          <span className="text-sm font-medium">{token.symbol}</span>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold">{(Number(bal) / 1e18).toFixed(4)}</p>
+                          <p className="text-[10px] text-lapo-muted">≈ ${usdVal.toLocaleString("en-US", { maximumFractionDigits: 2 })}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div>
-                  <p className="text-2xl font-bold text-red-400">{defaulted.toString()}</p>
-                  <p className="text-[11px] text-lapo-muted mt-0.5 uppercase tracking-widest">Defaults</p>
-                </div>
+                {ethBal === 0n && btcBal === 0n && solBal === 0n && (
+                  <div className="mt-4 p-3 border border-lapo-border/40 rounded text-xs text-lapo-muted">
+                    No collateral yet.{" "}
+                    <Link href="/faucet" className="text-lapo-blue hover:text-lapo-cyan transition-colors">
+                      Get testnet tokens →
+                    </Link>
+                  </div>
+                )}
               </div>
-            </div>
+
+              <div className="grid grid-cols-2 gap-6 pt-2">
+                <StatCard label="USDC balance" value={`$${formatUSDC(usdcBal)}`} accent />
+                <StatCard label="Borrow APY"   value={`${formatBps(apy)}%`}       cyan />
+              </div>
+            </>
           ) : (
-            <p className="text-sm text-lapo-muted">Connect your wallet to see your reputation.</p>
+            <p className="text-sm text-lapo-muted">Connect your wallet to borrow.</p>
           )}
 
-          <div className="flex gap-8 pt-2">
-            <StatCard label="Credit limit" value={`$${formatUSDC(maxBorrow)}`} accent />
-            <StatCard label="APY today"    value={`${formatBps(apy)}%`}         cyan />
-          </div>
-
-          {/* Credit tiers */}
+          {/* Ratio guide */}
           <div className="border-t border-lapo-border pt-6">
             <p className="text-[11px] font-medium text-lapo-muted uppercase tracking-[0.14em] mb-4">
-              Credit tiers
+              Collateral ratios
             </p>
             <div className="space-y-0">
               {[
-                { range: "0–99",    tier: "Unrated",  limit: "No access",  color: "#7090b0" },
-                { range: "100–299", tier: "Starter",  limit: "$1,000",     color: "#0ae8f0" },
-                { range: "300–599", tier: "Trusted",  limit: "$5,000",     color: "#006bff" },
-                { range: "600–999", tier: "Verified", limit: "$20,000",    color: "#004796" },
-                { range: "1000",    tier: "Prime",    limit: "$50,000",    color: "#0ae8f0" },
-              ].map((t) => (
-                <div
-                  key={t.tier}
-                  className="flex items-center justify-between py-2.5 border-b border-lapo-border/30 last:border-0"
-                >
+                { label: "Min to open",     value: "135%", color: "#22c55e", note: "You start here" },
+                { label: "Caution zone",    value: "115–130%", color: "#f59e0b", note: "Top up collateral" },
+                { label: "Liquidation",     value: "105%",  color: "#ef4444", note: "Anyone can liquidate" },
+              ].map(r => (
+                <div key={r.label} className="flex items-center justify-between py-2.5 border-b border-lapo-border/30 last:border-0">
                   <div className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: t.color }} />
-                    <span className="text-sm font-medium" style={{ color: t.color }}>{t.tier}</span>
-                    <span className="text-[11px] text-lapo-muted/50">({t.range})</span>
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: r.color }} />
+                    <span className="text-sm">{r.label}</span>
                   </div>
-                  <span className="text-sm text-lapo-muted">{t.limit}</span>
+                  <div className="text-right">
+                    <span className="text-sm font-semibold" style={{ color: r.color }}>{r.value}</span>
+                    <p className="text-[10px] text-lapo-muted">{r.note}</p>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         </div>
 
-        {/* Right: actions */}
+        {/* Right: open position + positions list */}
         <div className="lg:col-span-3 space-y-10">
-          {/* Bootstrap */}
-          {isConnected && score === 0n && (
-            <div className="pl-4 animate-fade-up" style={{ borderLeft: "2px solid #0ae8f0" }}>
-              <div className="flex items-center gap-2 mb-3">
-                <Plus size={15} color="#0ae8f0" />
-                <h3 className="font-semibold">Start your credit history</h3>
-              </div>
-              <p className="text-sm text-lapo-muted mb-5 leading-relaxed">
-                Commit 10 USDC as proof of intent. The funds come straight back and your wallet
-                receives <span className="text-white">100 score points</span>, enough to take
-                your first loan.
-              </p>
-              {insufficientForBootstrap && (
-                <p className="text-xs text-red-400 mb-4">
-                  You need at least 10 USDC to bootstrap. Your balance: ${formatUSDC(usdcBal)}.
-                </p>
-              )}
-              {txMsg && (
-                <div className="flex items-center gap-2 text-green-400 text-sm mb-4">
-                  <CheckCircle size={14} /> {txMsg}
-                </div>
-              )}
-              {needsBootstrapApproval ? (
-                <TxButton
-                  onClick={() => approve.approve(BOOTSTRAP_AMOUNT)}
-                  loading={approve.isPending || approve.isConfirming}
-                  loadingText="Approving…"
-                  disabled={insufficientForBootstrap}
-                >
-                  Approve 10 USDC
-                </TxButton>
-              ) : (
-                <TxButton
-                  onClick={() => bootstrap.bootstrap()}
-                  loading={bootstrap.isPending || bootstrap.isConfirming}
-                  loadingText="Bootstrapping…"
-                  disabled={insufficientForBootstrap}
-                >
-                  Bootstrap Reputation (+100 score)
-                </TxButton>
-              )}
-            </div>
-          )}
 
-          {/* Request loan */}
-          {isConnected && canBorrow && (
+          {isConnected && (
             <div className="animate-fade-up">
               <p className="text-[11px] font-medium text-lapo-muted uppercase tracking-[0.14em] mb-6">
-                Request a loan
+                Open a position
               </p>
 
-              {/* Underline-style amount input */}
-              <div className="border-b border-lapo-border focus-within:border-lapo-blue pb-3 mb-8 transition-colors">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] text-lapo-muted uppercase tracking-[0.14em]">Amount</span>
+              {/* Token selector */}
+              <div className="flex gap-0 border-b border-lapo-border/40 mb-8">
+                {COLLATERAL_TOKENS.map(token => (
                   <button
-                    onClick={() => setAmount(formatUSDC(maxBorrow, 2).replace(/,/g, ""))}
+                    key={token.symbol}
+                    onClick={() => { setSelectedToken(token); setCollAmount(""); setBorrowAmount(""); }}
+                    className={cn(
+                      "flex-1 pb-3 text-sm font-semibold border-b-2 -mb-px transition-all flex items-center justify-center gap-1.5",
+                      selectedToken.symbol === token.symbol
+                        ? "text-white border-lapo-blue"
+                        : "text-lapo-muted border-transparent hover:text-white/60"
+                    )}
+                  >
+                    <span style={{ color: token.color }}>{token.icon}</span>
+                    {token.symbol}
+                  </button>
+                ))}
+              </div>
+
+              {/* Collateral amount input */}
+              <div className="border-b border-lapo-border focus-within:border-lapo-blue pb-3 mb-6 transition-colors">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] text-lapo-muted uppercase tracking-[0.14em]">Collateral</span>
+                  <button
+                    onClick={() => setCollAmount((Number(selectedBalance) / 1e18).toFixed(6))}
                     className="text-xs font-semibold text-lapo-blue hover:text-lapo-cyan transition-colors"
                   >
-                    MAX &nbsp;
-                    <span className="text-lapo-muted font-normal">${formatUSDC(maxBorrow)}</span>
+                    MAX &nbsp;<span className="text-lapo-muted font-normal">{(Number(selectedBalance) / 1e18).toFixed(4)} {selectedToken.symbol}</span>
                   </button>
                 </div>
                 <div className="flex items-baseline gap-2">
                   <input
                     type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
+                    value={collAmount}
+                    onChange={e => setCollAmount(e.target.value)}
+                    placeholder="0.0000"
+                    className="flex-1 bg-transparent text-4xl font-bold text-white placeholder:text-lapo-muted/20 focus:outline-none"
+                  />
+                  <span className="text-lapo-muted font-medium pb-1">{selectedToken.symbol}</span>
+                </div>
+                {collValueUSDC > 0n && (
+                  <p className="text-xs text-lapo-muted mt-1">
+                    ≈ ${formatUSDC(collValueUSDC)} USDC · max borrow ${formatUSDC(maxBorrow)}
+                  </p>
+                )}
+              </div>
+
+              {/* Borrow amount input */}
+              <div className="border-b border-lapo-border focus-within:border-lapo-blue pb-3 mb-8 transition-colors">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] text-lapo-muted uppercase tracking-[0.14em]">Borrow</span>
+                  {maxBorrow > 0n && (
+                    <button
+                      onClick={() => setBorrowAmount(formatUSDC(maxBorrow, 6).replace(/,/g, ""))}
+                      className="text-xs font-semibold text-lapo-blue hover:text-lapo-cyan transition-colors"
+                    >
+                      MAX &nbsp;<span className="text-lapo-muted font-normal">${formatUSDC(maxBorrow)}</span>
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <input
+                    type="number"
+                    value={borrowAmount}
+                    onChange={e => setBorrowAmount(e.target.value)}
                     placeholder="0.00"
-                    max={formatUSDC(maxBorrow, 2).replace(/,/g, "")}
                     className="flex-1 bg-transparent text-4xl font-bold text-white placeholder:text-lapo-muted/20 focus:outline-none"
                   />
                   <span className="text-lapo-muted font-medium pb-1">USDC</span>
                 </div>
               </div>
 
-              {/* Term selector — underline tabs */}
-              <div className="mb-8">
-                <p className="text-[11px] text-lapo-muted uppercase tracking-[0.14em] mb-3">Loan term</p>
-                <div className="flex gap-0 border-b border-lapo-border/40">
-                  {DURATIONS.map((d) => (
-                    <button
-                      key={d.value}
-                      onClick={() => setDuration(d.value)}
-                      className={cn(
-                        "flex-1 pb-3 text-sm font-semibold border-b-2 -mb-px transition-all",
-                        duration === d.value
-                          ? "text-white border-lapo-blue"
-                          : "text-lapo-muted border-transparent hover:text-white/60"
-                      )}
-                    >
-                      {d.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               {/* Preview */}
-              {amount && Number(amount) > 0 && (
+              {borrowAmount && Number(borrowAmount) > 0 && collValueUSDC > 0n && (
                 <div className="space-y-3 text-sm mb-8 animate-fade-up">
                   <div className="flex justify-between border-b border-lapo-border/40 pb-2">
                     <span className="text-lapo-muted">Origination fee (0.5%)</span>
@@ -356,60 +419,84 @@ export default function BorrowPage() {
                   </div>
                   <div className="flex justify-between border-b border-lapo-border/40 pb-2">
                     <span className="text-lapo-muted">You receive</span>
-                    <span className="font-semibold">${disbursed.toFixed(2)}</span>
+                    <span className="font-semibold">${disbursed.toFixed(2)} USDC</span>
                   </div>
                   <div className="flex justify-between border-b border-lapo-border/40 pb-2">
-                    <span className="text-lapo-muted">Total to repay</span>
-                    <span className="font-semibold text-lapo-cyan">${totalRepay.toFixed(2)}</span>
+                    <span className="text-lapo-muted">Collateral ratio</span>
+                    <span className="font-semibold" style={{ color: healthColor(collRatio) }}>
+                      {collRatio > 0 ? `${collRatio.toFixed(0)}%` : "—"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-b border-lapo-border/40 pb-2">
+                    <span className="text-lapo-muted">Liquidation price ({selectedToken.symbol})</span>
+                    <span className="font-semibold text-red-400">
+                      ${liqPrice > 0 ? liqPrice.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "—"}
+                    </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-lapo-muted">Fixed APY · {durationLabel(duration)}</span>
+                    <span className="text-lapo-muted">Borrow APY</span>
                     <span>{formatBps(apy)}%</span>
                   </div>
                 </div>
               )}
 
+              {insufficientBal && collAmount && (
+                <p className="text-xs text-red-400 mb-4">
+                  Insufficient {selectedToken.symbol} balance.
+                </p>
+              )}
+              {exceedsMax && (
+                <p className="text-xs text-red-400 mb-4">
+                  Borrow amount exceeds maximum (${formatUSDC(maxBorrow)}).
+                </p>
+              )}
+              {poolInsufficient && borrowAmount && !exceedsMax && (
+                <p className="text-xs text-red-400 mb-4">
+                  Pool has insufficient USDC liquidity for this loan.
+                </p>
+              )}
+
               {txMsg && (
                 <div className="flex items-center gap-2 text-green-400 text-sm mb-4 animate-fade-up">
-                  <CheckCircle size={16} /> {txMsg}
+                  <CheckCircle size={14} /> {txMsg}
                 </div>
               )}
 
-              {requestLoan.error && (
+              {(openPosition.error || approveCollateral.error) && (
                 <p className="text-xs text-red-400 mb-4">
-                  {requestLoan.error.message?.slice(0, 160)}
+                  {(openPosition.error || approveCollateral.error)?.message?.slice(0, 160)}
                 </p>
               )}
 
               <TxButton
-                onClick={() => requestLoan.requestLoan(amount, duration)}
+                onClick={handleOpen}
                 disabled={
-                  !amount ||
-                  Number(amount) <= 0 ||
-                  loanExceedsLimit
+                  !collAmount || Number(collAmount) <= 0 ||
+                  !borrowAmount || Number(borrowAmount) <= 0 ||
+                  insufficientBal || exceedsMax || poolInsufficient
                 }
-                loading={requestLoan.isPending || requestLoan.isConfirming}
-                loadingText="Requesting Loan…"
+                loading={openButtonLoading}
+                loadingText={openButtonLoadingText}
               >
-                Request Loan
+                {openButtonLabel}
               </TxButton>
             </div>
           )}
 
-          {/* Loan list */}
-          {isConnected && loanIds.length > 0 && (
+          {/* Open positions */}
+          {isConnected && positionIds.length > 0 && (
             <div className="animate-fade-up">
               <p className="text-[11px] font-medium text-lapo-muted uppercase tracking-[0.14em] mb-4">
-                Your loans
+                Your positions
               </p>
               <div>
-                {loanIds.map((id) => (
-                  <LoanRow
+                {positionIds.map(id => (
+                  <PositionRow
                     key={id.toString()}
-                    loanId={id}
-                    onRepay={handleRepay}
-                    onDefault={handleDefault}
-                    repaying={repayingId === id && isRepaying}
+                    positionId={id}
+                    onClose={handleClose}
+                    onLiquidate={handleLiquidate}
+                    closing={closingId === id && isClosePending}
                   />
                 ))}
               </div>
