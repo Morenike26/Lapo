@@ -524,7 +524,8 @@ export default function BorrowPage() {
               )}
               {poolInsufficient && borrowAmount && !exceedsMax && (
                 <p className="text-xs text-red-400 mb-4">
-                  Pool has insufficient USDC liquidity for this loan.
+                  The pool only has ${formatUSDC(stats?.[2] ?? 0n)} USDC available right now.
+                  {(stats?.[2] ?? 0n) > 0n && ` Try borrowing up to $${formatUSDC(stats?.[2] ?? 0n)}.`}
                 </p>
               )}
 
