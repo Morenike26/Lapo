@@ -1,7 +1,7 @@
 // ── Addresses ─────────────────────────────────────────────────────────────────
 
 export const LAPO_ADDRESS = (
-  process.env.NEXT_PUBLIC_LAPO_ADDRESS ?? "0xbe23c4D81082d3ce47749B3886aA0214bB5EbAf7"
+  process.env.NEXT_PUBLIC_LAPO_ADDRESS ?? "0xb19b7a93c1f0E0D502744b1fceB06e2a3AD2317b"
 ) as `0x${string}`;
 
 export const ORACLE_ADDRESS = (

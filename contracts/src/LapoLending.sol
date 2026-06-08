@@ -15,23 +15,19 @@ interface IPriceOracle {
  * @title LapoLending
  * @notice Permissionless collateral-backed USDC lending on Arc Testnet.
  *
- * Lenders deposit USDC and receive LP shares that appreciate as interest accrues.
+ * Lenders deposit USDC and receive LP shares that appreciate as fees and interest accrue.
  * Borrowers deposit mwETH / mwBTC / mwSOL as collateral and borrow USDC against it.
  *
  * Collateral ratios:
- *   Min to open:       135% (borrow 100 USDC → need $135 of collateral)
- *   Liquidation:       105% (position health drops to 1.05× → anyone can liquidate)
+ *   Min to open:   135%  (borrow 100 USDC → need $135 of collateral)
+ *   Liquidation:   105%  (health drops to 1.05x → anyone can liquidate)
  *
  * Fee structure:
- *   0.5% origination fee on every loan → treasury
- *   10% of accrued interest on close / liquidation → treasury
- *   90% of accrued interest → lending pool (lender yield)
- *
- * Liquidation:
- *   Liquidator repays the full outstanding debt (principal + interest).
- *   Liquidator receives all posted collateral (worth ~1.05× debt at trigger).
- *   The ~5% excess in collateral value is the liquidator's incentive and the
- *   protocol's safety buffer — ensuring lenders are always made whole.
+ *   Origination (0.5% of loan):  70% to lending pool, 30% to treasury
+ *   Interest on close:           90% to pool, 10% to treasury
+ *   Liquidation spread (50% of collateral excess over debt):
+ *     70% of that spread → pool, 30% → treasury
+ *     Liquidator still profits the remaining 50% of the spread as incentive
  *
  * Interest model (utilization-based, snapshotted at position open):
  *   APY (bps) = 500 + utilization × 4500
@@ -40,14 +36,16 @@ contract LapoLending {
 
     // ── Constants ────────────────────────────────────────────────────────────
 
-    uint256 public constant BASIS_POINTS        = 10_000;
-    uint256 public constant ORIGINATION_FEE     = 50;      // 0.5 %
-    uint256 public constant PROTOCOL_CUT        = 1_000;   // 10 % of interest
-    uint256 public constant BASE_RATE           = 500;     // 5 % floor APY
-    uint256 public constant RATE_SLOPE          = 4_500;   // + 45 % at 100 % util
-    uint256 public constant SECONDS_PER_YEAR    = 365 days;
-    uint256 public constant MIN_COLLATERAL_PCT  = 135;     // open threshold
-    uint256 public constant LIQUIDATION_PCT     = 105;     // liquidation threshold
+    uint256 public constant BASIS_POINTS               = 10_000;
+    uint256 public constant ORIGINATION_FEE            = 50;      // 0.5 %
+    uint256 public constant LENDER_SHARE               = 7_000;   // 70 % of fees to pool
+    uint256 public constant PROTOCOL_CUT               = 1_000;   // 10 % of interest to treasury
+    uint256 public constant LIQUIDATION_PROTOCOL_SHARE = 5_000;   // 50 % of liq-spread to protocol+lenders
+    uint256 public constant BASE_RATE                  = 500;     // 5 % floor APY
+    uint256 public constant RATE_SLOPE                 = 4_500;   // + 45 % at 100 % util
+    uint256 public constant SECONDS_PER_YEAR           = 365 days;
+    uint256 public constant MIN_COLLATERAL_PCT         = 135;
+    uint256 public constant LIQUIDATION_PCT            = 105;
 
     // ── State ────────────────────────────────────────────────────────────────
 
@@ -60,7 +58,7 @@ contract LapoLending {
     uint256 public totalShares;
     uint256 public totalDeposited;
     uint256 public totalBorrowed;
-    uint256 public accruedToPool;
+    uint256 public accruedToPool;   // informational: total fees/interest routed to lenders
 
     mapping(address => uint256) public shares;
     mapping(address => bool)    public supportedCollateral;
@@ -79,8 +77,8 @@ contract LapoLending {
     }
 
     uint256 public nextPositionId;
-    mapping(uint256 => Position)    public positions;
-    mapping(address => uint256[])   public userPositions;
+    mapping(uint256 => Position)  public positions;
+    mapping(address => uint256[]) public userPositions;
 
     // ── Events ───────────────────────────────────────────────────────────────
 
@@ -108,8 +106,6 @@ contract LapoLending {
     error NotBorrower();
     error PositionHealthy();
     error WithdrawalExceedsLiquidity();
-
-    // ── Modifier ─────────────────────────────────────────────────────────────
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -182,8 +178,11 @@ contract LapoLending {
         uint256 available = USDC.balanceOf(address(this));
         if (borrowUSDC > available) revert InsufficientLiquidity();
 
-        uint256 fee       = (borrowUSDC * ORIGINATION_FEE) / BASIS_POINTS;
-        uint256 disbursed = borrowUSDC - fee;
+        // Origination fee: 70% stays in pool (benefits lenders), 30% to treasury
+        uint256 fee           = (borrowUSDC * ORIGINATION_FEE) / BASIS_POINTS;
+        uint256 feeToPool     = (fee * LENDER_SHARE) / BASIS_POINTS;
+        uint256 feeToTreasury = fee - feeToPool;
+        uint256 disbursed     = borrowUSDC - fee;
 
         positionId = nextPositionId++;
         positions[positionId] = Position({
@@ -199,12 +198,13 @@ contract LapoLending {
         });
         userPositions[msg.sender].push(positionId);
         totalBorrowed += borrowUSDC;
+        accruedToPool += feeToPool;  // informational tracking
 
         require(
             IERC20(collateralToken).transferFrom(msg.sender, address(this), collateralAmount),
             "collateral transfer failed"
         );
-        require(USDC.transfer(treasury, fee),       "fee failed");
+        if (feeToTreasury > 0) require(USDC.transfer(treasury, feeToTreasury), "fee failed");
         require(USDC.transfer(msg.sender, disbursed), "disburse failed");
 
         emit PositionOpened(positionId, msg.sender, collateralToken, collateralAmount, borrowUSDC);
@@ -221,6 +221,7 @@ contract LapoLending {
         uint256 interest = _accruedInterest(pos);
         uint256 total    = pos.borrowedUSDC + interest;
 
+        // Interest split: 90% to pool, 10% to treasury
         uint256 protocolInterest = (interest * PROTOCOL_CUT) / BASIS_POINTS;
         uint256 poolInterest     = interest - protocolInterest;
 
@@ -228,13 +229,13 @@ contract LapoLending {
         totalBorrowed -= pos.borrowedUSDC;
         accruedToPool += poolInterest;
 
-        address collToken   = pos.collateralToken;
-        uint256 collAmount  = pos.collateralAmount;
+        address collToken  = pos.collateralToken;
+        uint256 collAmount = pos.collateralAmount;
 
+        // Borrower repays principal + interest; pool receives the full amount
         require(USDC.transferFrom(msg.sender, address(this), total), "repay failed");
-        if (protocolInterest > 0) {
-            require(USDC.transfer(treasury, protocolInterest), "fee failed");
-        }
+        // Treasury's 10% cut of interest is sent out; pool retains the rest
+        if (protocolInterest > 0) require(USDC.transfer(treasury, protocolInterest), "fee failed");
         require(IERC20(collToken).transfer(msg.sender, collAmount), "collateral return failed");
 
         emit PositionClosed(positionId, msg.sender, total);
@@ -253,20 +254,31 @@ contract LapoLending {
         uint256 colValue = _collateralValue(pos.collateralToken, pos.collateralAmount);
         if (colValue * 100 >= totalDebt * LIQUIDATION_PCT) revert PositionHealthy();
 
+        // Spread: collateral excess above the debt (may be 0 if severely underwater)
+        uint256 spread   = colValue > totalDebt ? colValue - totalDebt : 0;
+
+        // 50% of the spread goes to lenders + treasury; liquidator keeps the other 50%
+        uint256 liqFee           = (spread * LIQUIDATION_PROTOCOL_SHARE) / BASIS_POINTS;
+        uint256 liqFeeToPool     = (liqFee * LENDER_SHARE) / BASIS_POINTS;
+        uint256 liqFeeToTreasury = liqFee - liqFeeToPool;
+
+        // Interest split: 90% to pool, 10% to treasury
         uint256 protocolInterest = (interest * PROTOCOL_CUT) / BASIS_POINTS;
         uint256 poolInterest     = interest - protocolInterest;
 
         pos.liquidated = true;
         totalBorrowed -= pos.borrowedUSDC;
-        accruedToPool += poolInterest;
+        accruedToPool += poolInterest + liqFeeToPool;
 
         address collToken  = pos.collateralToken;
         uint256 collAmount = pos.collateralAmount;
 
-        require(USDC.transferFrom(msg.sender, address(this), totalDebt), "repay failed");
-        if (protocolInterest > 0) {
-            require(USDC.transfer(treasury, protocolInterest), "fee failed");
-        }
+        // Liquidator pays: full debt + their share of the liq fee
+        uint256 totalToRepay = totalDebt + liqFee;
+        require(USDC.transferFrom(msg.sender, address(this), totalToRepay), "repay failed");
+
+        uint256 treasuryOut = protocolInterest + liqFeeToTreasury;
+        if (treasuryOut > 0) require(USDC.transfer(treasury, treasuryOut), "fee failed");
         require(IERC20(collToken).transfer(msg.sender, collAmount), "collateral transfer failed");
 
         emit PositionLiquidated(positionId, pos.borrower, msg.sender);
@@ -297,14 +309,11 @@ contract LapoLending {
         return (colValue * 100) / MIN_COLLATERAL_PCT;
     }
 
-    // Price at which the given position hits the liquidation threshold.
-    // Returns 0 for closed / liquidated positions.
     function liquidationPrice(uint256 positionId) external view returns (uint256) {
         Position storage pos = positions[positionId];
         if (pos.closed || pos.liquidated || pos.borrower == address(0)) return 0;
         uint256 interest  = _accruedInterest(pos);
         uint256 totalDebt = pos.borrowedUSDC + interest;
-        // colValue at liq = totalDebt * 1.05  →  price = totalDebt * 105 / 100 / amount * 1e18
         return (totalDebt * LIQUIDATION_PCT * 1e18) / (pos.collateralAmount * 100);
     }
 
@@ -357,8 +366,11 @@ contract LapoLending {
 
     // ── Internal ─────────────────────────────────────────────────────────────
 
+    // Total pool value = physical USDC in contract + outstanding loans.
+    // Interest stays in the USDC balance when positions close, so it's
+    // automatically counted without needing a separate accruedToPool term.
     function _totalAssets() internal view returns (uint256) {
-        return USDC.balanceOf(address(this)) + totalBorrowed + accruedToPool;
+        return USDC.balanceOf(address(this)) + totalBorrowed;
     }
 
     function _utilization() internal view returns (uint256) {

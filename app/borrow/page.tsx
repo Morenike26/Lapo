@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useAccount } from "wagmi";
+import { useState, useEffect, useRef } from "react";
+import { useAccount, useReadContract } from "wagmi";
 import { CheckCircle, AlertTriangle, ArrowRight } from "lucide-react";
 import {
   useBorrowerInfo,
@@ -14,10 +14,11 @@ import {
   useLiquidate,
   usePositionDetails,
 } from "@/hooks/useLapo";
+import { USDC_ADDRESS, ERC20_ABI } from "@/lib/contracts";
 import { TxButton } from "@/components/TxButton";
 import { StatCard } from "@/components/StatCard";
 import { formatUSDC, formatBps, cn } from "@/lib/utils";
-import { MWETH_ADDRESS, MWBTC_ADDRESS, MWSOL_ADDRESS, LAPO_ADDRESS, USDC_ADDRESS } from "@/lib/contracts";
+import { MWETH_ADDRESS, MWBTC_ADDRESS, MWSOL_ADDRESS, LAPO_ADDRESS } from "@/lib/contracts";
 import { parseUnits, formatUnits } from "viem";
 import Link from "next/link";
 
@@ -55,20 +56,35 @@ function tokenPrice(raw: bigint | undefined) {
 
 function PositionRow({
   positionId,
-  onClose,
-  onLiquidate,
-  closing,
+  onSuccess,
 }: {
   positionId: bigint;
-  onClose: (id: bigint) => void;
-  onLiquidate: (id: bigint) => void;
-  closing: boolean;
+  onSuccess: () => void;
 }) {
-  const { data } = usePositionDetails(positionId);
+  const { address } = useAccount();
+  const { data, refetch: refetchDetails } = usePositionDetails(positionId);
+
   const pos      = data?.[0]?.result as any;
   const hf       = Number(data?.[1]?.result ?? 0n);
   const liqPrice = data?.[2]?.result as bigint | undefined;
   const interest = data?.[3]?.result as bigint | undefined;
+
+  // USDC allowance to Lapo (needed for close and liquidate)
+  const { data: allowanceRaw, refetch: refetchAllowance } = useReadContract({
+    address: USDC_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: "allowance",
+    args: [address!, LAPO_ADDRESS],
+    query: { enabled: !!address, refetchInterval: 5_000 },
+  });
+  const allowance = (allowanceRaw as bigint | undefined) ?? 0n;
+
+  const approveUSDC = useApproveUSDC();
+  const closePos    = useClosePosition();
+  const liquidate   = useLiquidate();
+
+  // Track which action is pending so we know what to do after approval
+  const pendingAction = useRef<"close" | "liquidate" | null>(null);
 
   if (!pos || pos.borrower === "0x0000000000000000000000000000000000000000") return null;
   if (pos.closed || pos.liquidated) return null;
@@ -77,6 +93,66 @@ function PositionRow({
   const total  = pos.borrowedUSDC + (interest ?? 0n);
   const liqP   = liqPrice ? tokenPrice(liqPrice) : 0;
   const color  = healthColor(hf);
+
+  // Liquidation: liquidator pays totalDebt + 50% of the spread (protocol share)
+  // Approximate spread from health factor: colValue ≈ hf * totalDebt / 100
+  const spread       = hf > 100 ? (BigInt(hf - 100) * total) / 100n : 0n;
+  const liqFee       = spread / 2n;  // 50% of spread
+  const totalToRepay = total + liqFee;
+
+  const closeNeedsApproval    = allowance < total;
+  const liquidateNeedsApproval = allowance < totalToRepay;
+
+  // After USDC approval confirmed, trigger the queued action
+  useEffect(() => {
+    if (!approveUSDC.isSuccess) return;
+    refetchAllowance();
+    if (pendingAction.current === "close") {
+      pendingAction.current = null;
+      closePos.closePosition(positionId);
+    } else if (pendingAction.current === "liquidate") {
+      pendingAction.current = null;
+      liquidate.liquidate(positionId);
+    }
+  }, [approveUSDC.isSuccess]);
+
+  useEffect(() => {
+    if (closePos.isSuccess || liquidate.isSuccess) {
+      refetchDetails();
+      onSuccess();
+    }
+  }, [closePos.isSuccess, liquidate.isSuccess]);
+
+  const handleClose = () => {
+    if (closeNeedsApproval) {
+      pendingAction.current = "close";
+      approveUSDC.approve(total);
+    } else {
+      closePos.closePosition(positionId);
+    }
+  };
+
+  const handleLiquidate = () => {
+    if (liquidateNeedsApproval) {
+      pendingAction.current = "liquidate";
+      approveUSDC.approve(totalToRepay);
+    } else {
+      liquidate.liquidate(positionId);
+    }
+  };
+
+  const closeLoading    = approveUSDC.isPending || approveUSDC.isConfirming || closePos.isPending || closePos.isConfirming;
+  const liquidateLoading = liquidate.isPending || liquidate.isConfirming;
+
+  const closeLabel = closeNeedsApproval
+    ? "Approve USDC to Close"
+    : `Repay $${formatUSDC(total)} & Close`;
+
+  const liquidateLabel = liquidateNeedsApproval ? "Approve & Liquidate" : "Liquidate";
+
+  const closeLoadingText = (approveUSDC.isPending || approveUSDC.isConfirming) && pendingAction.current === "close"
+    ? "Approving…"
+    : "Closing…";
 
   return (
     <div
@@ -113,23 +189,30 @@ function PositionRow({
         </div>
       </div>
 
+      {(closePos.error || liquidate.error || approveUSDC.error) && (
+        <p className="text-xs text-red-400">
+          {(closePos.error || liquidate.error || approveUSDC.error)?.message?.slice(0, 160)}
+        </p>
+      )}
+
       <div className="flex gap-2 pt-1">
         <TxButton
-          onClick={() => onClose(positionId)}
-          loading={closing}
-          loadingText="Closing…"
+          onClick={handleClose}
+          loading={closeLoading}
+          loadingText={closeLoadingText}
           className="flex-1"
         >
-          Repay ${formatUSDC(total)} &amp; Close
+          {closeLabel}
         </TxButton>
         {hf > 0 && hf < 105 && (
           <TxButton
-            onClick={() => onLiquidate(positionId)}
-            loading={false}
+            onClick={handleLiquidate}
+            loading={liquidateLoading}
+            loadingText={liquidateNeedsApproval ? "Approving…" : "Liquidating…"}
             variant="danger"
             className="flex-none px-4 !w-auto"
           >
-            Liquidate
+            {liquidateLabel}
           </TxButton>
         )}
       </div>
@@ -150,7 +233,6 @@ export default function BorrowPage() {
   const [collAmount, setCollAmount]       = useState("");
   const [borrowAmount, setBorrowAmount]   = useState("");
   const [txMsg, setTxMsg]                 = useState<string | null>(null);
-  const [closingId, setClosingId]         = useState<bigint | null>(null);
 
   const apy     = stats?.[4] ?? 0n;
 
@@ -203,27 +285,23 @@ export default function BorrowPage() {
 
   // Write hooks
   const approveCollateral = useApproveCollateral();
-  const approveUSDC       = useApproveUSDC();
   const openPosition      = useOpenPosition();
-  const closePosition     = useClosePosition();
-  const liquidate         = useLiquidate();
 
   const isOpenPending = openPosition.isPending || openPosition.isConfirming;
-  const isClosePending = closePosition.isPending || closePosition.isConfirming;
 
   useEffect(() => {
-    if (openPosition.isSuccess || closePosition.isSuccess || approveCollateral.isSuccess) {
+    if (openPosition.isSuccess || approveCollateral.isSuccess) {
       refetch();
-      const msg = openPosition.isSuccess ? "Position opened. USDC sent to your wallet." :
-                  closePosition.isSuccess ? "Position closed. Collateral returned." :
-                  "Approved. Ready to open position.";
+      const msg = openPosition.isSuccess
+        ? "Position opened. USDC sent to your wallet."
+        : "Approved. Ready to open position.";
       setTxMsg(msg);
-      if (openPosition.isSuccess || closePosition.isSuccess) {
-        setCollAmount(""); setBorrowAmount(""); setClosingId(null);
+      if (openPosition.isSuccess) {
+        setCollAmount(""); setBorrowAmount("");
       }
       setTimeout(() => setTxMsg(null), 5000);
     }
-  }, [openPosition.isSuccess, closePosition.isSuccess, approveCollateral.isSuccess]);
+  }, [openPosition.isSuccess, approveCollateral.isSuccess]);
 
   const handleOpen = () => {
     if (needsApproval) {
@@ -232,9 +310,6 @@ export default function BorrowPage() {
       openPosition.openPosition(selectedToken.address, collAmountParsed, borrowAmount);
     }
   };
-
-  const handleClose = (id: bigint) => { setClosingId(id); closePosition.closePosition(id); };
-  const handleLiquidate = (id: bigint) => liquidate.liquidate(id);
 
   const openButtonLabel = needsApproval
     ? `Approve ${collAmount || "0"} ${selectedToken.symbol}`
@@ -493,9 +568,7 @@ export default function BorrowPage() {
                   <PositionRow
                     key={id.toString()}
                     positionId={id}
-                    onClose={handleClose}
-                    onLiquidate={handleLiquidate}
-                    closing={closingId === id && isClosePending}
+                    onSuccess={refetch}
                   />
                 ))}
               </div>
