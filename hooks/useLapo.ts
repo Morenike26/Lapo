@@ -94,13 +94,17 @@ export function useFaucetStatus(address?: `0x${string}`) {
   });
 }
 
+// Arc Testnet's RPC does not support eth_estimateGas reliably.
+// A single high ceiling avoids OOG on any operation and bypasses estimation.
+const GAS = 500_000n;
+
 // ── Write hooks ───────────────────────────────────────────────────────────────
 
 export function useApproveUSDC() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   const approve = (amount: bigint) =>
-    writeContract({ address: USDC_ADDRESS, abi: ERC20_ABI, functionName: "approve", args: [LAPO_ADDRESS, amount] });
+    writeContract({ address: USDC_ADDRESS, abi: ERC20_ABI, functionName: "approve", args: [LAPO_ADDRESS, amount], gas: GAS });
   return { approve, isPending, isConfirming, isSuccess, error };
 }
 
@@ -108,7 +112,7 @@ export function useApproveCollateral() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   const approve = (tokenAddress: `0x${string}`, amount: bigint) =>
-    writeContract({ address: tokenAddress, abi: ERC20_ABI, functionName: "approve", args: [LAPO_ADDRESS, amount] });
+    writeContract({ address: tokenAddress, abi: ERC20_ABI, functionName: "approve", args: [LAPO_ADDRESS, amount], gas: GAS });
   return { approve, isPending, isConfirming, isSuccess, error };
 }
 
@@ -116,7 +120,7 @@ export function useDeposit() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   const deposit = (amount: string) =>
-    writeContract({ address: LAPO_ADDRESS, abi: LAPO_ABI, functionName: "deposit", args: [parseUnits(amount, 6)] });
+    writeContract({ address: LAPO_ADDRESS, abi: LAPO_ABI, functionName: "deposit", args: [parseUnits(amount, 6)], gas: GAS });
   return { deposit, isPending, isConfirming, isSuccess, error };
 }
 
@@ -124,7 +128,7 @@ export function useWithdraw() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   const withdraw = (shares: bigint) =>
-    writeContract({ address: LAPO_ADDRESS, abi: LAPO_ABI, functionName: "withdraw", args: [shares] });
+    writeContract({ address: LAPO_ADDRESS, abi: LAPO_ABI, functionName: "withdraw", args: [shares], gas: GAS });
   return { withdraw, isPending, isConfirming, isSuccess, error };
 }
 
@@ -135,6 +139,7 @@ export function useOpenPosition() {
     writeContract({
       address: LAPO_ADDRESS, abi: LAPO_ABI, functionName: "openPosition",
       args: [collateralToken, collateralAmount, parseUnits(borrowUSDC, 6)],
+      gas: GAS,
     });
   return { openPosition, isPending, isConfirming, isSuccess, error };
 }
@@ -143,7 +148,7 @@ export function useClosePosition() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   const closePosition = (positionId: bigint) =>
-    writeContract({ address: LAPO_ADDRESS, abi: LAPO_ABI, functionName: "closePosition", args: [positionId] });
+    writeContract({ address: LAPO_ADDRESS, abi: LAPO_ABI, functionName: "closePosition", args: [positionId], gas: GAS });
   return { closePosition, isPending, isConfirming, isSuccess, error };
 }
 
@@ -151,7 +156,7 @@ export function useLiquidate() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   const liquidate = (positionId: bigint) =>
-    writeContract({ address: LAPO_ADDRESS, abi: LAPO_ABI, functionName: "liquidate", args: [positionId] });
+    writeContract({ address: LAPO_ADDRESS, abi: LAPO_ABI, functionName: "liquidate", args: [positionId], gas: GAS });
   return { liquidate, isPending, isConfirming, isSuccess, error };
 }
 
@@ -159,7 +164,7 @@ export function useFaucetClaim() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   const claim = () =>
-    writeContract({ address: FAUCET_ADDRESS, abi: FAUCET_ABI, functionName: "claim", args: [] });
+    writeContract({ address: FAUCET_ADDRESS, abi: FAUCET_ABI, functionName: "claim", args: [], gas: GAS });
   return { claim, isPending, isConfirming, isSuccess, error };
 }
 
