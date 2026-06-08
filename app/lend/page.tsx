@@ -29,6 +29,7 @@ export default function LendPage() {
 
   const tvl         = stats?.[0] ?? 0n;
   const borrowed    = stats?.[1] ?? 0n;
+  const liquidity   = stats?.[2] ?? 0n;
   const utilization = stats?.[3] ?? 0n;
   const apy         = stats?.[4] ?? 0n;
 
@@ -75,10 +76,11 @@ export default function LendPage() {
 
   const parsedAmount = amount ? parseUnits(amount, 6) : 0n;
 
-  // Balance checks
   const insufficientBalance = tab === "deposit"
     ? parsedAmount > usdcBal
     : parsedAmount > myUSDCValue;
+
+  const insufficientLiquidity = tab === "withdraw" && parsedAmount > 0n && parsedAmount > liquidity;
 
   const handleAction = () => {
     if (!amount) return;
@@ -260,9 +262,15 @@ export default function LendPage() {
                 </p>
               )}
 
+              {insufficientLiquidity && (
+                <p className="text-xs text-red-400">
+                  The pool only has ${formatUSDC(liquidity)} available right now. Some of your deposit is currently out on loan and cannot be withdrawn until borrowers repay.
+                </p>
+              )}
+
               <TxButton
                 onClick={handleAction}
-                disabled={!amount || Number(amount) <= 0 || insufficientBalance}
+                disabled={!amount || Number(amount) <= 0 || insufficientBalance || insufficientLiquidity}
                 loading={isLoading}
                 loadingText={loadingText}
               >
