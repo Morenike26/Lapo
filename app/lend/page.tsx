@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAccount } from "wagmi";
 import { CheckCircle } from "lucide-react";
 import {
@@ -25,6 +25,7 @@ export default function LendPage() {
   const [tab, setTab]       = useState<Tab>("deposit");
   const [amount, setAmount] = useState("");
   const [txMsg, setTxMsg]   = useState<string | null>(null);
+  const txPending = useRef<"deposit" | "withdraw" | null>(null);
 
   const tvl         = stats?.[0] ?? 0n;
   const borrowed    = stats?.[1] ?? 0n;
@@ -54,10 +55,12 @@ export default function LendPage() {
     withdraw.isPending || withdraw.isConfirming;
 
   useEffect(() => {
-    if (deposit.isSuccess || withdraw.isSuccess) {
+    if ((deposit.isSuccess || withdraw.isSuccess) && txPending.current !== null) {
+      const msg = txPending.current === "deposit" ? "Deposit confirmed." : "Withdrawal confirmed.";
+      txPending.current = null;
       refetch();
       setAmount("");
-      setTxMsg(deposit.isSuccess ? "Deposit confirmed." : "Withdrawal confirmed.");
+      setTxMsg(msg);
       setTimeout(() => setTxMsg(null), 4000);
     }
   }, [deposit.isSuccess, withdraw.isSuccess]);
@@ -81,9 +84,11 @@ export default function LendPage() {
     if (!amount) return;
     if (tab === "deposit") {
       if (needsApproval) { approve.approve(parsedAmount); return; }
+      txPending.current = "deposit";
       deposit.deposit(amount);
     } else {
       if (myUSDCValue === 0n || myShares === 0n) return;
+      txPending.current = "withdraw";
       const sharesToBurn = (parsedAmount * myShares) / myUSDCValue;
       withdraw.withdraw(sharesToBurn);
     }
