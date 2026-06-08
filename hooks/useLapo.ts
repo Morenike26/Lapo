@@ -17,7 +17,7 @@ import {
 // Gas limits tuned for Arc's USDC precompile (~131k per USDC transfer op)
 const GAS = {
   // USDC ops
-  usdcApprove:     50_000n,
+  usdcApprove:     80_000n,
   deposit:        200_000n,
   withdraw:       200_000n,
   // Collateral ops (mock ERC20 is cheap, USDC transfers are the bottleneck)
