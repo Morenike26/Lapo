@@ -149,7 +149,7 @@ export default function LendPage() {
                 <p className="text-sm text-lapo-muted leading-relaxed">
                   <span className="text-white font-mono text-xs">5% + utilization × 45%</span>
                   <br />
-                  Starts at 5% and climbs to 50% as the pool fills up with active loans.
+                  Starts at 5% and goes up to 50% as more of the pool gets borrowed out.
                 </p>
               </div>
             </>

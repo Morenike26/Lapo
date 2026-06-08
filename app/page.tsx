@@ -32,9 +32,8 @@ export default function DashboardPage() {
             <span className="gradient-text">real assets.</span>
           </h1>
           <p className="text-lapo-muted text-xl leading-relaxed mb-10 max-w-lg">
-            Lapo is a permissionless lending pool on Arc. Lenders earn yield on every
-            loan. Borrowers put up mwETH, mwBTC, or mwSOL as collateral and draw
-            USDC against it — no credit checks, no intermediaries.
+            Lapo is a lending pool on Arc. Put up mwETH, mwBTC, or mwSOL and borrow
+            USDC against it. No credit checks, no middlemen, just code.
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
             <Link
@@ -85,9 +84,9 @@ export default function DashboardPage() {
               <h3 className="font-semibold text-lg">Put your USDC to work</h3>
             </div>
             <ul className="space-y-3 text-sm text-lapo-muted leading-relaxed">
-              <li>Deposit USDC and receive LP shares that appreciate as borrowers repay interest.</li>
-              <li>90% of all interest flows directly to the pool. You keep the lion's share.</li>
-              <li>Withdraw any time liquidity is available — no lock-ups, no vesting.</li>
+              <li>Deposit USDC and receive LP shares that grow as borrowers pay interest.</li>
+              <li>90% of all interest goes straight back into the pool, so your position compounds over time.</li>
+              <li>Withdraw whenever liquidity is available. No lock-ups, no vesting period.</li>
             </ul>
             <Link href="/lend" className="inline-flex items-center gap-1.5 mt-6 text-sm font-semibold text-lapo-blue hover:text-lapo-cyan transition-colors">
               Go to Lend <ArrowRight size={14} />
@@ -102,8 +101,8 @@ export default function DashboardPage() {
             </div>
             <ul className="space-y-3 text-sm text-lapo-muted leading-relaxed">
               <li>Deposit mwETH, mwBTC, or mwSOL as collateral and draw USDC at a 135% ratio.</li>
-              <li>Prices are tracked on-chain from live market feeds. Positions stay open until you close them.</li>
-              <li>If your ratio drops below 105%, anyone can liquidate to protect the pool.</li>
+              <li>Prices come from live CoinGecko feeds and are updated on-chain. Your position stays open until you close it.</li>
+              <li>If your collateral ratio falls below 105%, the position can be liquidated to cover the loan.</li>
             </ul>
             <Link href="/borrow" className="inline-flex items-center gap-1.5 mt-6 text-sm font-semibold text-lapo-cyan hover:text-lapo-blue transition-colors">
               Go to Borrow <ArrowRight size={14} />

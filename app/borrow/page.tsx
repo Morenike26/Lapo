@@ -248,8 +248,7 @@ export default function BorrowPage() {
       <div className="mb-10 animate-fade-up">
         <h1 className="text-3xl font-bold mb-1">Borrow</h1>
         <p className="text-lapo-muted">
-          Deposit mwETH, mwBTC, or mwSOL as collateral and borrow USDC at a 135% collateral ratio.
-          Positions are liquidated at 105%.
+          Put up mwETH, mwBTC, or mwSOL and borrow USDC against it. You need 135% collateral to open a position and it gets liquidated at 105%.
         </p>
       </div>
 

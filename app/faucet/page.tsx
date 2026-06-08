@@ -93,7 +93,7 @@ export default function FaucetPage() {
           {/* Claim totals */}
           {isConnected && !claimed && (
             <div className="mt-2 pl-4 py-3 border-l-2 border-lapo-blue/40 text-sm text-lapo-muted">
-              Claiming will add 5 mwETH · 5 mwBTC · 5 mwSOL to your wallet.
+              You will receive 5 of each token in a single transaction.
             </div>
           )}
         </div>
@@ -114,7 +114,7 @@ export default function FaucetPage() {
                   <CheckCircle size={14} /> Already claimed
                 </div>
                 <p className="text-xs text-lapo-muted leading-relaxed">
-                  You have already claimed your testnet tokens. Head to the Borrow page to open a collateral position.
+                  You already claimed your testnet tokens. Go to the Borrow page to put them to work.
                 </p>
               </div>
             ) : (
@@ -152,8 +152,8 @@ export default function FaucetPage() {
 
             <div className="border-t border-lapo-border pt-4 space-y-2 text-xs text-lapo-muted">
               <p className="font-medium text-white text-[11px] uppercase tracking-widest">How it works</p>
-              <p>These tokens are pegged to real-world prices via an on-chain oracle updated from CoinGecko.</p>
-              <p>Use them as collateral on the Borrow page to take out USDC loans at a 135% collateral ratio.</p>
+              <p>The prices come from CoinGecko and are tracked on-chain. When the market moves, so does your collateral value.</p>
+              <p>Use them on the Borrow page to take out a USDC loan. You need at least 135% collateral to open a position.</p>
             </div>
           </div>
         </div>
