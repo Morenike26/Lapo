@@ -86,24 +86,7 @@ function PositionRow({
   // Track which action is pending so we know what to do after approval
   const pendingAction = useRef<"close" | "liquidate" | null>(null);
 
-  if (!pos || pos.borrower === "0x0000000000000000000000000000000000000000") return null;
-  if (pos.closed || pos.liquidated) return null;
-
-  const token  = COLLATERAL_TOKENS.find(t => t.address.toLowerCase() === pos.collateralToken.toLowerCase());
-  const total  = pos.borrowedUSDC + (interest ?? 0n);
-  const liqP   = liqPrice ? tokenPrice(liqPrice) : 0;
-  const color  = healthColor(hf);
-
-  // Liquidation: liquidator pays totalDebt + 50% of the spread (protocol share)
-  // Approximate spread from health factor: colValue ≈ hf * totalDebt / 100
-  const spread       = hf > 100 ? (BigInt(hf - 100) * total) / 100n : 0n;
-  const liqFee       = spread / 2n;  // 50% of spread
-  const totalToRepay = total + liqFee;
-
-  const closeNeedsApproval    = allowance < total;
-  const liquidateNeedsApproval = allowance < totalToRepay;
-
-  // After USDC approval confirmed, trigger the queued action
+  // All effects must come before any conditional returns (Rules of Hooks)
   useEffect(() => {
     if (!approveUSDC.isSuccess) return;
     refetchAllowance();
@@ -122,6 +105,21 @@ function PositionRow({
       onSuccess();
     }
   }, [closePos.isSuccess, liquidate.isSuccess]);
+
+  if (!pos || pos.borrower === "0x0000000000000000000000000000000000000000") return null;
+  if (pos.closed || pos.liquidated) return null;
+
+  const token  = COLLATERAL_TOKENS.find(t => t.address.toLowerCase() === pos.collateralToken.toLowerCase());
+  const total  = pos.borrowedUSDC + (interest ?? 0n);
+  const liqP   = liqPrice ? tokenPrice(liqPrice) : 0;
+  const color  = healthColor(hf);
+
+  const spread       = hf > 100 ? (BigInt(hf - 100) * total) / 100n : 0n;
+  const liqFee       = spread / 2n;
+  const totalToRepay = total + liqFee;
+
+  const closeNeedsApproval     = allowance < total;
+  const liquidateNeedsApproval = allowance < totalToRepay;
 
   const handleClose = () => {
     if (closeNeedsApproval) {
